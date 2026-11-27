@@ -137,6 +137,21 @@ function defaultExecGit(cwd: string, args: string[], opts: { timeoutMs?: number 
     });
 }
 
+// GitHub 直连在国内线路经常卡在 TCP 连接阶段，这两个镜像只用于只读的 fetch/pull，
+// 推送始终走 origin，避免把代码推到第三方。
+const GIT_MIRROR_PREFIXES = ['https://ghproxy.net/', 'https://gh-proxy.com/'];
+
+/** 镜像尝试时改写 git 参数：fetch 必须带 refspec，否则 remote-tracking 引用不会更新。 */
+export function buildNetworkGitArgs(args: string[], remote: string | undefined, originUrl: string, mirror: string): string[] {
+    if (!mirror || !remote || !/^https?:\/\//.test(originUrl))
+        return args;
+    const mapped = args.map(arg => arg === remote ? `${mirror}${originUrl}` : arg);
+    if (args.includes('fetch')) {
+        mapped.push(`+refs/heads/*:refs/remotes/${remote}/*`);
+    }
+    return mapped;
+}
+
 function resolveSourceRepoRoot(appRoot: string, explicitRoot?: string | null): string | null {
     const candidates: string[] = [];
     if (explicitRoot) candidates.push(path.resolve(explicitRoot));
@@ -174,17 +189,30 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
     const execGitNetwork = async (
         cwd: string,
         args: string[],
-        opts: { attempts?: number; timeoutMs?: number } = {},
+        opts: { attempts?: number; timeoutMs?: number; remote?: string } = {},
     ): Promise<string> => {
         const attempts = Math.max(1, opts.attempts ?? 3);
         const timeoutMs = Math.max(5000, opts.timeoutMs ?? 60000);
+        let originUrl = '';
+        if (opts.remote) {
+            try {
+                originUrl = String(await execGit(cwd, ['remote', 'get-url', opts.remote], { timeoutMs: 5000 })).trim();
+            } catch {
+                // 拿不到远端地址时只走直连，不猜测镜像地址
+            }
+        }
+        const mirrorUsable = /^https?:\/\//.test(originUrl);
         let lastError: any = null;
         for (let attempt = 0; attempt < attempts; attempt++) {
+            const mirror = attempt === 0 || !mirrorUsable
+                ? ''
+                : GIT_MIRROR_PREFIXES[(attempt - 1) % GIT_MIRROR_PREFIXES.length];
+            const attemptArgs = buildNetworkGitArgs(args, opts.remote, originUrl, mirror);
             try {
                 return await execGit(cwd, [
                     '-c', 'http.lowSpeedLimit=1000',
                     '-c', 'http.lowSpeedTime=20',
-                    ...args,
+                    ...attemptArgs,
                 ], { timeoutMs });
             } catch (err: any) {
                 lastError = err;
@@ -619,13 +647,13 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
             throw createUpdateError('当前分支未关联远程跟踪分支，或处于游离 HEAD 状态', 400, 'NO_UPSTREAM');
         }
         try {
-            await execGitNetwork(envInfo.repoRoot, ['fetch', '--prune', repo.remote], { attempts: 3, timeoutMs: 60000 });
+            await execGitNetwork(envInfo.repoRoot, ['fetch', '--prune', repo.remote], { attempts: 3, timeoutMs: 25000, remote: repo.remote });
             lastCheckedAt = now();
             lastCheckError = '';
         } catch (err: any) {
             lastCheckedAt = now();
             lastCheckError = err?.message || '检查远程更新失败';
-            throw createUpdateError(`检查远程更新失败：${lastCheckError}`, 400, 'GIT_FETCH_FAILED');
+            throw createUpdateError(`检查远程更新失败（直连与镜像均已尝试）：${lastCheckError}`, 400, 'GIT_FETCH_FAILED');
         }
         return getStatus(true);
     };
@@ -657,7 +685,9 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
 
         const fromCommit = repo.shortCommit;
         try {
-            await execGitNetwork(envInfo.repoRoot, ['pull', '--ff-only', repo.remote, repo.remoteBranch], { attempts: 2, timeoutMs: 90000 });
+            await execGitNetwork(envInfo.repoRoot, ['pull', '--ff-only', repo.remote, repo.remoteBranch], { attempts: 3, timeoutMs: 30000, remote: repo.remote });
+            // 镜像 pull 用 URL 作仓库参数，不会刷新跟踪分支；FETCH_HEAD 此时就是远端 tip。
+            await execGit(envInfo.repoRoot, ['update-ref', `refs/remotes/${repo.remote}/${repo.remoteBranch}`, 'FETCH_HEAD']).catch(() => {});
             lastPulledAt = now();
         } catch (err: any) {
             throw createUpdateError(`拉取代码失败：${err?.message || 'git pull 执行失败'}`, 400, 'GIT_PULL_FAILED');
@@ -918,6 +948,7 @@ const defaultSystemUpdateService = createSystemUpdateService();
 module.exports = {
     createSystemUpdateService,
     resolveRestartSupport,
+    buildNetworkGitArgs,
     getSystemUpdateStatus: () => defaultSystemUpdateService.getStatus(),
     checkSystemUpdates: () => defaultSystemUpdateService.checkForUpdates(),
     pullSystemUpdates: () => defaultSystemUpdateService.pullUpdates(),

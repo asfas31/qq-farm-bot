@@ -100,6 +100,7 @@
 - 更新任务状态写入 `runtime/panel-update-job.json`，日志在 `runtime/panel-update-job.log`；拉取前会检查工作区未提交修改与部署锁
 - 更新源为本仓库 `origin/main`（`https://github.com/asfas31/qq-farm-bot`）：本仓库即个人自用更新仓库，提交记录就是本人实例的更新记录，不跟随其他上游仓库
 - systemd / `start.sh` 托管时设置页显示「重启服务」按钮：先拉取代码并完成构建，再点按钮；面板回包后给自身发 `SIGTERM`，由守护机制拉起新进程。直接 `node` 启动时按钮隐藏，避免把面板关掉后无人拉起
+- 检查与拉取依次尝试 GitHub 直连、`ghproxy.net`、`gh-proxy.com` 镜像；镜像只用于只读 `fetch/pull`，推送始终走 `origin`。镜像 `fetch` 带显式 refspec，保证 `origin/main` 与面板显示的版本号同步
 
 ## 技术栈
 

@@ -1901,7 +1901,8 @@ const updateApplying = ref(false)
 const updateRestarting = ref(false)
 const restartConfirmOpen = ref(false)
 const updateActionError = ref('')
-const updateRequestConfig = { skipErrorToast: true, timeout: 90_000 }
+// 检查/拉取最多依次尝试直连 + 两个镜像，单次超时 25~30s，留出重试与退避的余量。
+const updateRequestConfig = { skipErrorToast: true, timeout: 150_000 }
 let updateViewActive = true
 let updatePollTimer: ReturnType<typeof setTimeout> | null = null
 

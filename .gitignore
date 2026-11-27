@@ -48,6 +48,8 @@ Thumbs.db
 !core/tests/*.test.js
 !web/tests/
 !web/tests/*.test.mjs
+!miniapp-auth/test/
+!miniapp-auth/test/*.test.js
 coverage/
 .nyc_output/
 

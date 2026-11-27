@@ -508,7 +508,7 @@ onMounted(() => {
           <span v-if="gameVersion">QQ {{ gameVersion }}</span>
           <span v-if="wxGameVersion">微信 {{ wxGameVersion }}</span>
         </div>
-        <a href="https://github.com/liyangpengs/qq-farm-bot" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="GitHub">
+        <a href="https://github.com/asfas31/qq-farm-bot" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="GitHub">
           <span class="i-carbon-logo-github" />
         </a>
       </footer>

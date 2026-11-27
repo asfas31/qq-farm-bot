@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { getApiErrorMessage } from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
@@ -480,6 +480,117 @@ async function copyGenerated() {
   }
 }
 
+/* ---------------- 卡密详情抽屉 ---------------- */
+const detailId = ref('')
+const detailNote = ref('')
+const detailBusy = ref(false)
+
+const detailKey = computed(() => keys.value.find(key => key.id === detailId.value) || null)
+const detailOpen = computed(() => Boolean(detailKey.value))
+const detailUsagePercent = computed(() => {
+  const key = detailKey.value
+  if (!key || !key.maxUses)
+    return 0
+  return Math.min(100, Math.round((key.uses / key.maxUses) * 100))
+})
+
+function openDetail(key: CardKeyItem) {
+  detailId.value = key.id
+  detailNote.value = key.note || ''
+}
+
+const detailIndex = computed(() => filteredKeys.value.findIndex(key => key.id === detailId.value))
+
+// 在当前筛选结果里前后翻页，方便连续核对同批卡密。
+function stepDetail(delta: number) {
+  const list = filteredKeys.value
+  if (list.length < 2 || detailIndex.value < 0)
+    return
+  const next = list[(detailIndex.value + delta + list.length) % list.length]
+  if (next)
+    openDetail(next)
+}
+
+function closeDetail() {
+  detailId.value = ''
+  detailNote.value = ''
+}
+
+function toggleDetailStatus() {
+  const key = detailKey.value
+  if (key)
+    void toggleKey(key)
+}
+
+function removeDetailKey() {
+  const key = detailKey.value
+  if (key)
+    void removeKey(key)
+}
+
+async function copyDetailCode() {
+  const key = detailKey.value
+  if (!key)
+    return
+  const ok = await copyText(key.code)
+  if (ok)
+    toast.success('已复制卡密')
+  else
+    toast.error('复制失败，请手动选择')
+}
+
+async function copyDetailUsers() {
+  const key = detailKey.value
+  if (!key || !key.usedBy.length)
+    return
+  const ok = await copyText(key.usedBy.map(item => item.username).join('\n'))
+  if (ok)
+    toast.success(`已复制 ${key.usedBy.length} 个兑换用户`)
+  else
+    toast.error('复制失败，请手动选择')
+}
+
+async function saveDetailNote() {
+  const key = detailKey.value
+  if (!key)
+    return
+  detailBusy.value = true
+  try {
+    const res = await api.post('/api/admin/cardkeys/batch', { action: 'note', ids: [key.id], note: detailNote.value })
+    if (res.data.ok) {
+      toast.success('备注已保存')
+      await loadKeys()
+    }
+    else {
+      toast.error(res.data.error || '保存备注失败')
+    }
+  }
+  catch (e: any) {
+    toast.error(getApiErrorMessage(e, '保存备注失败'))
+  }
+  finally {
+    detailBusy.value = false
+  }
+}
+
+// 抽屉打开时锁定背景滚动，并支持 Esc 关闭。
+watch(detailOpen, (open) => {
+  if (typeof document === 'undefined')
+    return
+  document.body.style.overflow = open ? 'hidden' : ''
+})
+
+// 卡密被删除或刷新后不存在时，自动收起抽屉，避免展示空数据。
+watch(detailKey, (key) => {
+  if (!key && detailId.value)
+    detailId.value = ''
+})
+
+function handleDetailKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && detailId.value && !detailBusy.value)
+    closeDetail()
+}
+
 async function toggleKey(key: CardKeyItem) {
   const next = key.status === 'disabled' ? 'active' : 'disabled'
   try {
@@ -503,6 +614,8 @@ async function removeKey(key: CardKeyItem) {
   try {
     const res = await api.delete(`/api/admin/cardkeys/${key.id}`)
     if (res.data.ok) {
+      if (detailId.value === key.id)
+        closeDetail()
       toast.success('已删除')
       await refreshAll()
     }
@@ -619,7 +732,16 @@ async function createUser() {
   }
 }
 
-onMounted(refreshAll)
+onMounted(() => {
+  window.addEventListener('keydown', handleDetailKeydown)
+  void refreshAll()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleDetailKeydown)
+  if (typeof document !== 'undefined')
+    document.body.style.overflow = ''
+})
 </script>
 
 <template>
@@ -889,6 +1011,7 @@ onMounted(refreshAll)
               </td>
               <td class="muted-cell">{{ formatTime(key.createdAt) }}</td>
               <td class="col-actions">
+                <button class="row-btn" type="button" @click="openDetail(key)">详情</button>
                 <button class="row-btn" type="button" @click="toggleKey(key)">
                   {{ key.status === 'disabled' ? '启用' : '禁用' }}
                 </button>
@@ -963,6 +1086,115 @@ onMounted(refreshAll)
         </table>
       </div>
     </section>
+
+    <Teleport to="body">
+      <Transition name="ck-drawer">
+        <div v-if="detailKey" class="ck-drawer-root">
+          <div class="ck-drawer-mask" @click="closeDetail" />
+          <aside class="ck-drawer" role="dialog" aria-modal="true" aria-label="卡密详情">
+            <header class="ck-drawer-head">
+              <div class="ck-drawer-head-main">
+                <span class="ck-drawer-kicker">卡密详情</span>
+                <strong class="ck-drawer-code">{{ detailKey.code }}</strong>
+              </div>
+              <div class="ck-drawer-nav">
+                <button
+                  class="ck-drawer-icon-btn"
+                  type="button"
+                  aria-label="上一条"
+                  :disabled="filteredKeys.length < 2"
+                  @click="stepDetail(-1)"
+                >
+                  ‹
+                </button>
+                <button
+                  class="ck-drawer-icon-btn"
+                  type="button"
+                  aria-label="下一条"
+                  :disabled="filteredKeys.length < 2"
+                  @click="stepDetail(1)"
+                >
+                  ›
+                </button>
+                <button class="ck-drawer-close" type="button" aria-label="关闭" @click="closeDetail">✕</button>
+              </div>
+            </header>
+
+            <div class="ck-drawer-body">
+              <div class="ck-drawer-badges">
+                <span class="status-pill" :class="`is-${detailKey.status}`">{{ statusText[detailKey.status] || detailKey.status }}</span>
+                <span class="ck-badge">{{ detailKey.days }} 天</span>
+                <span class="ck-badge">用量 {{ detailKey.uses }} / {{ detailKey.maxUses }}</span>
+              </div>
+
+              <div class="ck-usage">
+                <div class="ck-usage-track">
+                  <span class="ck-usage-fill" :class="{ 'is-full': detailUsagePercent >= 100 }" :style="{ width: `${detailUsagePercent}%` }" />
+                </div>
+                <span class="ck-usage-text">剩余可用 {{ detailKey.remaining }} 次</span>
+              </div>
+
+              <dl class="ck-meta">
+                <div class="ck-meta-item">
+                  <dt>创建时间</dt>
+                  <dd>{{ formatTime(detailKey.createdAt) }}</dd>
+                </div>
+                <div class="ck-meta-item">
+                  <dt>到期时间</dt>
+                  <dd>{{ formatTime(detailKey.expiresAt) }}</dd>
+                </div>
+                <div class="ck-meta-item">
+                  <dt>剩余时长</dt>
+                  <dd>{{ daysLeft(detailKey.expiresAt) }}</dd>
+                </div>
+                <div class="ck-meta-item">
+                  <dt>兑换人数</dt>
+                  <dd>{{ detailKey.usedBy.length }} 人</dd>
+                </div>
+              </dl>
+
+              <section class="ck-section">
+                <h3 class="ck-section-title">备注</h3>
+                <textarea
+                  v-model="detailNote"
+                  class="ck-note"
+                  rows="3"
+                  maxlength="120"
+                  placeholder="例如：QQ群 9 月批次"
+                />
+                <div class="ck-note-foot">
+                  <span>{{ detailNote.length }}/120</span>
+                  <BaseButton size="sm" variant="outline" :loading="detailBusy" @click="saveDetailNote">保存备注</BaseButton>
+                </div>
+              </section>
+
+              <section class="ck-section">
+                <h3 class="ck-section-title">
+                  兑换记录
+                  <span class="count-badge">{{ detailKey.usedBy.length }}</span>
+                </h3>
+                <ul v-if="detailKey.usedBy.length" class="ck-users">
+                  <li v-for="item in detailKey.usedBy" :key="`${item.userId}-${item.at}`" class="ck-user">
+                    <span class="ck-user-name">{{ item.username }}</span>
+                    <span class="ck-user-time">{{ formatTime(item.at) }}</span>
+                  </li>
+                </ul>
+                <p v-else class="ck-empty">暂无兑换记录</p>
+              </section>
+            </div>
+
+            <footer class="ck-drawer-foot">
+              <BaseButton size="sm" variant="outline" @click="copyDetailCode">复制卡密</BaseButton>
+              <BaseButton v-if="detailKey.usedBy.length" size="sm" variant="outline" @click="copyDetailUsers">复制用户</BaseButton>
+              <BaseButton size="sm" variant="secondary" @click="toggleDetailStatus">
+                {{ detailKey.status === 'disabled' ? '启用' : '禁用' }}
+              </BaseButton>
+              <BaseButton size="sm" variant="danger" @click="removeDetailKey">删除</BaseButton>
+            </footer>
+          </aside>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1423,6 +1655,322 @@ onMounted(refreshAll)
   width: 100px;
 }
 
+/* ---------------- 卡密详情抽屉 ---------------- */
+.ck-drawer-root {
+  position: fixed;
+  z-index: 2400;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ck-drawer-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 24, 20, 0.38);
+  backdrop-filter: blur(1px);
+}
+
+.ck-drawer {
+  position: relative;
+  display: flex;
+  width: min(420px, 100vw);
+  height: 100%;
+  flex-direction: column;
+  border-left: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: -18px 0 42px rgba(16, 24, 20, 0.16);
+}
+
+.ck-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.ck-drawer-head-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ck-drawer-kicker {
+  color: var(--ui-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.ck-drawer-code {
+  overflow-wrap: anywhere;
+  color: var(--ui-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.ck-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  color: var(--ui-muted);
+  font-size: 13px;
+  background: var(--ui-surface);
+  cursor: pointer;
+}
+
+.ck-drawer-close:hover {
+  border-color: rgba(67, 141, 99, 0.5);
+  color: var(--ui-primary);
+}
+
+.ck-drawer-nav {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.ck-drawer-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  color: var(--ui-ink);
+  font-size: 15px;
+  line-height: 1;
+  background: var(--ui-surface);
+  cursor: pointer;
+}
+
+.ck-drawer-icon-btn:hover:not(:disabled) {
+  border-color: rgba(67, 141, 99, 0.5);
+  color: var(--ui-primary);
+}
+
+.ck-drawer-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ck-drawer-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 18px 20px;
+  overflow-y: auto;
+}
+
+.ck-drawer-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ck-badge {
+  padding: 1px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  color: var(--ui-muted);
+  font-size: 11px;
+  font-weight: var(--fw-600);
+}
+
+.ck-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ck-usage-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ui-primary-soft);
+}
+
+.ck-usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ui-primary);
+  transition: width 0.25s ease;
+}
+
+.ck-usage-fill.is-full {
+  background: #c95f66;
+}
+
+.ck-usage-text {
+  color: var(--ui-muted);
+  font-size: 11px;
+}
+
+.ck-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.ck-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ck-meta-item dt {
+  color: var(--ui-muted);
+  font-size: 11px;
+}
+
+.ck-meta-item dd {
+  margin: 0;
+  color: var(--ui-ink);
+  font-size: 12px;
+}
+
+.ck-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.ck-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ui-ink);
+  font-size: 13px;
+  font-weight: var(--fw-600);
+}
+
+.ck-note {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  color: var(--ui-ink);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--ui-surface);
+  resize: vertical;
+}
+
+.ck-note:focus {
+  border-color: rgba(67, 141, 99, 0.55);
+  outline: none;
+}
+
+.ck-note-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ui-subtle);
+  font-size: 11px;
+}
+
+.ck-users {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ck-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ui-surface-strong) 40%, transparent);
+}
+
+.ck-user-name {
+  overflow: hidden;
+  color: var(--ui-ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ck-user-time {
+  flex: none;
+  color: var(--ui-muted);
+  font-size: 11px;
+}
+
+.ck-empty {
+  margin: 0;
+  padding: 14px 0;
+  color: var(--ui-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.ck-drawer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+}
+
+/* 抽屉进出场：遮罩淡入，面板从右侧滑入 */
+.ck-drawer-enter-active,
+.ck-drawer-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.ck-drawer-enter-active .ck-drawer,
+.ck-drawer-leave-active .ck-drawer {
+  transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.ck-drawer-enter-from,
+.ck-drawer-leave-to {
+  opacity: 0;
+}
+
+.ck-drawer-enter-from .ck-drawer,
+.ck-drawer-leave-to .ck-drawer {
+  transform: translateX(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-drawer-enter-active,
+  .ck-drawer-leave-active,
+  .ck-drawer-enter-active .ck-drawer,
+  .ck-drawer-leave-active .ck-drawer {
+    transition: none;
+  }
+}
+
 @media (max-width: 900px) {
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1442,6 +1990,22 @@ onMounted(refreshAll)
 }
 
 @media (max-width: 560px) {
+  .ck-drawer {
+    width: 100vw;
+  }
+
+  .ck-drawer-body {
+    padding: 14px 14px 18px;
+  }
+
+  .ck-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .ck-drawer-foot > * {
+    flex: 1 1 auto;
+  }
+
   .stat-grid {
     grid-template-columns: 1fr;
   }

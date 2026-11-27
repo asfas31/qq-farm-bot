@@ -13,8 +13,13 @@ const MEOW_DEFAULT_BASE_URL = 'https://api.chuckfang.com';
 const QQ_BOT_TOKEN_URL = 'https://bots.qq.com/app/getAppAccessToken';
 const QQ_BOT_API_BASE = 'https://api.sgroup.qq.com';
 const QQ_BOT_SANDBOX_API_BASE = 'https://sandbox.api.sgroup.qq.com';
-// access_token 两小时有效，按 AppID 缓存并在到期前 60 秒刷新，避免每次通知都取 token。
+// access_token 两小时有效，按 AppID + Secret 摘要缓存并在到期前 60 秒刷新，
+// 避免换过 AppSecret 后继续复用旧 token。
 const qqBotTokenCache = new Map<string, { token: string, expiresAt: number }>();
+
+function qqBotCacheKey(appId: string, appSecret: string): string {
+    return `${appId}:${crypto.createHash('sha256').update(appSecret).digest('hex').slice(0, 12)}`;
+}
 
 function assertRequiredText(name: string, value: any): string {
     const text: string = String(value || '').trim();
@@ -72,13 +77,22 @@ async function sendDingTalkMessage(payload: any): Promise<any> {
     const url = buildDingTalkWebhook(payload.endpoint, payload.token, payload.secret);
     const title = assertRequiredText('title', payload.title);
     const content = assertRequiredText('content', payload.content);
-    const response = await axios.post(url, {
-        msgtype: 'text',
-        text: {
-            content: `${title}\n${content}`,
-        },
-    });
-    return response.data;
+    const markdown = String(payload.markdown || '').trim();
+    // 钉钉机器人支持 markdown，有卡片时用 markdown 保留加粗/引用；失败再退回纯文本。
+    const body = markdown
+        ? { msgtype: 'markdown', markdown: { title, text: markdown } }
+        : { msgtype: 'text', text: { content: `${title}\n${content}` } };
+    const response = await axios.post(url, body, { timeout: 15000 });
+    const data: any = response.data;
+    // 机器人开了关键词/格式限制时 markdown 会被拒，降级成文本再试一次，保证通知不丢。
+    if (markdown && data && Number(data.errcode) !== 0) {
+        const fallback = await axios.post(url, {
+            msgtype: 'text',
+            text: { content: `${title}\n${content}` },
+        }, { timeout: 15000 });
+        return fallback.data;
+    }
+    return data;
 }
 
 /**
@@ -102,7 +116,7 @@ async function sendMeowMessage(payload: any): Promise<any> {
     const response = await axios.post(url, {
         title,
         msg: content,
-    });
+    }, { timeout: 15000 });
     const data: any = (response && response.data && typeof response.data === 'object') ? response.data : {};
     const status: number = Number(data.status);
     if (Number.isFinite(status) && status !== 200) {
@@ -118,7 +132,8 @@ async function sendMeowMessage(payload: any): Promise<any> {
 }
 
 async function getQQBotAccessToken(appId: string, appSecret: string): Promise<string> {
-    const cached = qqBotTokenCache.get(appId);
+    const cacheKey = qqBotCacheKey(appId, appSecret);
+    const cached = qqBotTokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
     let data: any = null;
     try {
@@ -136,7 +151,7 @@ async function getQQBotAccessToken(appId: string, appSecret: string): Promise<st
         throw new Error(`QQ 机器人获取 Token 失败：${reason}`.slice(0, 300));
     }
     const expiresIn = Math.max(60, Number(data?.expires_in) || 7200);
-    qqBotTokenCache.set(appId, { token, expiresAt: Date.now() + expiresIn * 1000 });
+    qqBotTokenCache.set(cacheKey, { token, expiresAt: Date.now() + expiresIn * 1000 });
     return token;
 }
 
@@ -242,7 +257,7 @@ async function sendPushooMessage(payload: any = {}): Promise<{ ok: boolean; code
     if (channel === 'webhook') request.options = options;
 
     const result: any = channel === 'dingtalk'
-        ? await sendDingTalkMessage({ endpoint, token, secret, title, content })
+        ? await sendDingTalkMessage({ endpoint, token, secret, title, content, markdown })
         : channel === 'meow'
             ? await sendMeowMessage({ endpoint, token, title, content })
             : channel === 'qqbot'
@@ -282,6 +297,7 @@ function pushChannelError(entry: OfflineReminderChannel, required: boolean): str
     if (required && !isPushChannelConfigured(entry)) {
         if (entry.channel === 'webhook') return 'Webhook 渠道需要填写接口地址';
         if (entry.channel === 'dingtalk') return '钉钉渠道需要填写 Webhook 地址';
+        if (entry.channel === 'meow') return 'MeoW 渠道需要填写注册昵称';
         return '当前推送渠道需要填写 Token';
     }
     if (entry.channel === 'dingtalk' && entry.endpoint) {

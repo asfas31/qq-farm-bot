@@ -27,7 +27,7 @@ function createReloginReminderService(options: ReloginReminderOptions) {
         return sec === 0 ? Infinity : sec * 1000;
     }
 
-    async function sendConfiguredPush(payload: { candidates?: PushNotification[]; title?: string; content?: string; accountId?: string; accountName?: string; logLabel?: string } = {}): Promise<void> {
+    async function sendConfiguredPush(payload: { candidates?: PushNotification[]; title?: string; content?: string; type?: string; accountId?: string; accountName?: string; logLabel?: string } = {}): Promise<void> {
         const cfg = store.getOfflineReminder();
         const enabled = normalizeNotificationTypes(cfg?.notificationTypes);
         // 同一轮仅发送第一条允许的提醒，优先保留原有的合并购买消息。
@@ -41,7 +41,8 @@ function createReloginReminderService(options: ReloginReminderOptions) {
         const title = baseTitle;
         const logLabel = String(payload.logLabel || '事件提醒').trim() || '事件提醒';
         try {
-            const card = buildCard({ title, content, type: String((notification as any).type || '') });
+            // type 决定卡片图标和标题（下线 / 商人到访 / 商人购买），缺失时退回通用通知样式。
+            const card = buildCard({ title, content, type: String((notification as any).type || payload.type || '') });
             const targets = readPushChannels(cfg || {}).filter(entry => entry.enabled);
             if (!targets.length) {
                 log('错误', '未启用已配置的推送渠道');
@@ -60,6 +61,10 @@ function createReloginReminderService(options: ReloginReminderOptions) {
                 ...await sendToOwnerTargets({ store, ownerId, message: card, sendPushooMessage, log }),
                 ...await sendPushChannels(targets.filter(entry => entry.channel !== 'qqbot'), card, sendPushooMessage),
             ];
+            if (!results.length) {
+                log('错误', `${logLabel}未发送：账号 ${accountName || accountId} 没有可用的推送目标`);
+                return;
+            }
             for (const result of results) {
                 const suffix = targets.length > 1 ? `（${result.channel}）` : '';
                 if (result.ok) log('系统', `${logLabel}发送成功${suffix}: ${accountName || accountId || title}`);
@@ -91,7 +96,7 @@ function createReloginReminderService(options: ReloginReminderOptions) {
                 return;
             }
 
-            await sendConfiguredPush({ title: baseTitle, content, accountId, accountName, logLabel: '下线提醒' });
+            await sendConfiguredPush({ title: baseTitle, content, type: 'offline', accountId, accountName, logLabel: '下线提醒' });
         } catch (e: any) {
             log('错误', `下线提醒发送异常: ${e.message}`);
         }

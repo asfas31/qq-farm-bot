@@ -191,12 +191,15 @@ function buildDailyReport(provider: any, store: any, maxAccountsInput?: number, 
         ? userStore.getPushSettings(ownerId).dailyReport.maxAccounts
         : cfg?.dailyReport?.maxAccounts ?? 8));
     const maxAccounts = Math.min(30, Math.max(1, Math.round(rawMax) || 8));
+    // 只收集一次账号快照：provider.getStatus 是热路径，原实现每次缩表都重新拉一遍，
+    // 账号多时会被放大成 O(N log N) 次同步查询。
     const accounts = collectAccounts(provider, store, 10000, ownerId);
-    let limit = maxAccounts;
-    let built = formatReport(collectAccounts(provider, store, limit, ownerId), accounts.length, getSystemDateKey());
+    const dateKey = getSystemDateKey();
+    let limit = Math.max(1, Math.min(maxAccounts, accounts.length || maxAccounts));
+    let built = formatReport(accounts.slice(0, limit), accounts.length, dateKey);
     while (built.content.length > 1700 && limit > 1) {
         limit = Math.max(1, Math.floor(limit / 2));
-        built = formatReport(collectAccounts(provider, store, limit, ownerId), accounts.length, getSystemDateKey());
+        built = formatReport(accounts.slice(0, limit), accounts.length, dateKey);
     }
     return built;
 }
@@ -215,20 +218,28 @@ async function sendToOwnerTargets(options: {
     const cfg = options.store.getOfflineReminder ? options.store.getOfflineReminder() : {};
     const channels = readPushChannels(cfg || {}).filter((entry: any) => entry.enabled);
     const qq = channels.find((entry: any) => entry.channel === 'qqbot');
-    if (!qq) return [];
     const owner = String(options.ownerId || 'admin');
-    // 普通用户自己绑定的 QQ 机器人优先：密钥和目标都独立，不再走管理员的渠道。
+    // 普通用户自己绑定的 QQ 机器人优先：密钥和目标都独立，不依赖管理员是否启用了 qqbot 渠道，
+    // 否则用户在面板里扫码绑定完，管理员的渠道开关关着就永远发不出去。
     const binding = owner !== 'admin' ? userStore.getPushBinding(owner) : null;
     if (binding && binding.enabled && parseQQBotTarget(binding.endpoint)) {
+        // 绑定必须使用用户自己扫码拿到的 AppID / AppSecret：c2c 的 openid 是按机器人隔离的，
+        // 拿管理员的凭据去发只会得到 openid 无效，所以这里不再回退到全局渠道。
         const entry = {
-            ...qq,
+            channel: 'qqbot',
+            enabled: true,
             endpoint: binding.endpoint,
-            token: binding.appId || qq.token,
-            secret: binding.appSecret || qq.secret,
+            token: binding.appId,
+            secret: binding.appSecret,
         };
+        if (!entry.token || !entry.secret) {
+            if (options.log) options.log('错误', '用户 QQ 机器人绑定缺少 AppID 或 AppSecret，已跳过');
+            return [];
+        }
         const sent = await sendPushChannels([entry], options.message, options.sendPushooMessage);
         return sent.map((result: any) => ({ ...result, label: '我的推送', ownerId: owner }));
     }
+    if (!qq) return [];
     let targets: any[] = (Array.isArray(cfg.pushTargets) ? cfg.pushTargets : [])
         .filter((entry: any) => entry.enabled
             && parseQQBotTarget(entry.endpoint)
@@ -265,12 +276,19 @@ async function sendDailyReport(options: {
     // 定时触发时每个归属用户各自有开关；面板手动测试 force=true 不受开关限制。
     if (!force && options.ownerId === undefined && cfg?.dailyReport?.enabled !== true) return [];
     const channels = readPushChannels(cfg || {}).filter((entry: any) => entry.enabled);
-    if (!channels.length) {
+    const qqChannel = channels.find((entry: any) => entry.channel === 'qqbot');
+    const hasOwnerBinding = (owner: string) => {
+        if (owner === 'admin') return false;
+        const binding = userStore.getPushBinding(owner);
+        return Boolean(binding?.enabled && binding.appId && binding.appSecret && parseQQBotTarget(binding.endpoint));
+    };
+    const scopedOwner = options.ownerId !== undefined ? String(options.ownerId || 'admin') : '';
+    // 普通用户自带 QQ 机器人绑定时，不要求管理员先配置 / 启用全局渠道。
+    if (!channels.length && !(scopedOwner && hasOwnerBinding(scopedOwner))) {
         if (options.log) options.log('错误', '每日报表未找到已启用的推送渠道');
         return [];
     }
     const results: any[] = [];
-    const qqChannel = channels.find((entry: any) => entry.channel === 'qqbot');
 
     // 非 QQ 渠道（webhook / 企业微信 / Telegram 等）只发管理员全量汇总，不受归属拆分影响。
     const otherChannels = channels.filter((entry: any) => entry.channel !== 'qqbot');
@@ -279,28 +297,40 @@ async function sendDailyReport(options: {
         results.push(...await sendPushChannels(otherChannels, report, options.sendPushooMessage));
     }
 
-    if (qqChannel) {
-        const owners = options.ownerId !== undefined
-            ? [String(options.ownerId || 'admin')]
-            : Array.from(new Set([
-                ...((Array.isArray(cfg.pushTargets) ? cfg.pushTargets : []).map((entry: any) => String(entry.ownerId || 'admin'))),
-                'admin',
-            ]));
-        for (const owner of owners) {
-            const accountCount = collectAccounts(options.provider, options.store, 10000, owner).length;
-            if (!accountCount) {
-                if (options.log) options.log('系统', `每日报表跳过 ${owner}：名下没有账号`);
-                continue;
-            }
-            const report = buildDailyReport(options.provider, options.store, options.maxAccounts, owner);
-            results.push(...await sendToOwnerTargets({
-                store: options.store,
-                ownerId: owner,
-                message: report,
-                sendPushooMessage: options.sendPushooMessage,
-                log: options.log,
-            }));
+    const boundUsers = options.ownerId === undefined && userStore.listUsers
+        ? userStore.listUsers()
+            .map((user: any) => String(user.id))
+            .filter((id: string) => id && hasOwnerBinding(id))
+        : [];
+    const owners = options.ownerId !== undefined
+        ? [scopedOwner || 'admin']
+        : Array.from(new Set([
+            ...((Array.isArray(cfg.pushTargets) ? cfg.pushTargets : []).map((entry: any) => String(entry.ownerId || 'admin'))),
+            'admin',
+            ...boundUsers,
+        ]));
+    for (const owner of owners) {
+        // 定时给管理员发送时，非 QQ 渠道（webhook / 企业微信 / Telegram 等）也要收到全量汇总，
+        // 原实现只在 ownerId 未指定时发送，导致面板里配好的 webhook 永远等不到定时日报。
+        if (owner === 'admin' && options.ownerId !== undefined && otherChannels.length) {
+            const report = buildDailyReport(options.provider, options.store, options.maxAccounts);
+            results.push(...await sendPushChannels(otherChannels, report, options.sendPushooMessage));
         }
+        // 没有全局 qqbot 渠道也没绑定自己机器人的用户，跳过，避免空跑 getStatus。
+        if (!qqChannel && !hasOwnerBinding(owner)) continue;
+        const accountCount = collectAccounts(options.provider, options.store, 10000, owner).length;
+        if (!accountCount) {
+            if (options.log) options.log('系统', `每日报表跳过 ${owner}：名下没有账号`);
+            continue;
+        }
+        const report = buildDailyReport(options.provider, options.store, options.maxAccounts, owner);
+        results.push(...await sendToOwnerTargets({
+            store: options.store,
+            ownerId: owner,
+            message: report,
+            sendPushooMessage: options.sendPushooMessage,
+            log: options.log,
+        }));
     }
 
     for (const result of results) {
@@ -339,7 +369,9 @@ function createDailyReportScheduler(options: {
                 : userStore.getPushSettings(owner).dailyReport;
             if (!daily || daily.enabled !== true) continue;
             const target = num(daily.hour) * 60 + num(daily.minute);
-            if (minutes < target || minutes >= target + 2) continue;
+            // 原实现只认 [target, target+2) 两分钟窗口，进程重启、GC 卡顿或面板忙时整天的报表
+            // 就被跳过了；给 15 分钟补偿窗口，marker 仍按天去重，不会重复发送。
+            if (minutes < target || minutes >= target + 15) continue;
             if (markers[owner]?.date === dateKey) continue;
             due.push(owner);
         }

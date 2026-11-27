@@ -12,6 +12,7 @@ const store = require('../../models/store');
 const userStore = require('../../models/user-store');
 const { pushChannelError, sendPushChannels, sendPushooMessage } = require('../../services/push');
 const { buildDailyReport, sendDailyReport, sendToOwnerTargets } = require('../../services/daily-report');
+const { deliverRealtimeMessage } = require('../../services/realtime-push');
 const qqbotBind = require('../../services/qqbot-bind');
 const { buildCard } = require('../../services/push-card');
 const { addOrUpdateAccount, deleteAccount } = store;
@@ -542,7 +543,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     ? `## 🌱 农场实时动态\n**测试卡片** · ${time}\n\n> 🌾 收获 12 ｜ 🌱 播种 3 ｜ 💰 出售 2\n\n*这是一条实时推送测试消息*`
                     : '',
             };
-            const results = await sendToOwnerTargets({ store, ownerId, message, sendPushooMessage });
+            const results = await deliverRealtimeMessage({ store, ownerId, message, sendPushooMessage });
             if (!results.length) {
                 return res.status(400).json({ ok: false, error: '请先配置并启用该用户的推送账号' });
             }

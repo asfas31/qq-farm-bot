@@ -5,6 +5,8 @@ export {};
  */
 
 const { sendToOwnerTargets } = require('./daily-report');
+const { readPushChannels } = require('../config/push-channels');
+const { sendPushChannels } = require('./push');
 const { getSystemDateKey } = require('../utils/utils');
 const userStore = require('../models/user-store');
 
@@ -27,6 +29,11 @@ const EVENT_LABELS: Record<string, string> = {
     'ranch:helpFarming': '🤝 牧场帮忙',
 };
 
+const EVENT_ALIASES: Record<string, string> = {
+    // 同一动作在 worker 里有两种事件名，合并到同一图标与文案。
+    levelUp: 'upgrade',
+};
+
 interface Bucket {
     events: Map<string, number>;
     accounts: Set<string>;
@@ -37,6 +44,34 @@ function clockText(): string {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * 发送一条实时动态。优先走归属用户的 QQ 机器人目标；管理员没有 QQ 目标时，
+ * 回退到已启用的非 QQ 渠道（webhook / 企业微信 / Telegram 等），避免开了实时推送却收不到。
+ */
+async function deliverRealtimeMessage(options: {
+    store: any;
+    ownerId: string;
+    message: { title: string; content: string; markdown?: string };
+    sendPushooMessage: (payload: any) => Promise<any>;
+    log?: (tag: string, msg: string) => void;
+}): Promise<any[]> {
+    const results = await sendToOwnerTargets({
+        store: options.store,
+        ownerId: options.ownerId,
+        message: options.message,
+        sendPushooMessage: options.sendPushooMessage,
+        log: options.log,
+    });
+    if (!results.length && String(options.ownerId || 'admin') === 'admin') {
+        const cfg = options.store.getOfflineReminder ? options.store.getOfflineReminder() : {};
+        const channels = readPushChannels(cfg || {}).filter((entry: any) => entry.enabled && entry.channel !== 'qqbot');
+        if (channels.length) {
+            results.push(...await sendPushChannels(channels, options.message, options.sendPushooMessage));
+        }
+    }
+    return results;
 }
 
 function createRealtimePushService(options: {
@@ -50,7 +85,13 @@ function createRealtimePushService(options: {
 
     function config(owner = 'admin'): any {
         if (owner && owner !== 'admin' && userStore.getPushSettings) {
-            return userStore.getPushSettings(owner).realtimePush;
+            try {
+                // 用户被删除或配置损坏时回退到管理员配置，避免整个事件循环抛异常。
+                const settings = userStore.getPushSettings(owner);
+                if (settings?.realtimePush) return settings.realtimePush;
+            } catch {
+                // ignore and fall through
+            }
         }
         const cfg = options.store.getOfflineReminder ? options.store.getOfflineReminder() : {};
         return cfg.realtimePush || { enabled: false, windowSec: 20, minIntervalSec: 60, dailyLimit: 120, markdown: true };
@@ -81,10 +122,19 @@ function createRealtimePushService(options: {
             .slice(0, 3)
             .join('、');
         const more = bucket.accounts.size > 3 ? ` 等 ${bucket.accounts.size} 个账号` : '';
-        const summary = [...bucket.events.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .map(([key, count]) => `${EVENT_LABELS[key] || key} ${count}`)
-            .join('　');
+        const summary = (() => {
+            // upgrade / levelUp 是同一个动作的两种事件名，按展示文案合并，避免一条卡片里出现两个「升级」。
+            const totals = new Map<string, number>();
+            for (const [key, count] of bucket.events) {
+                const canonical = EVENT_ALIASES[key] || key;
+                const label = EVENT_LABELS[canonical] || canonical;
+                totals.set(label, (totals.get(label) || 0) + count);
+            }
+            return [...totals.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([label, count]) => `${label} ${count}`)
+                .join('　');
+        })();
         const time = clockText();
         const title = '🌱 农场实时动态';
         const content = [
@@ -159,7 +209,7 @@ function createRealtimePushService(options: {
         counters.set(owner, counter);
         const message = buildMessage(owner, bucket, counter.count, cfg.dailyLimit, cfg.markdown !== false);
         try {
-            const results = await sendToOwnerTargets({
+            const results = await deliverRealtimeMessage({
                 store: options.store,
                 ownerId: owner,
                 message,
@@ -180,9 +230,10 @@ function createRealtimePushService(options: {
         for (const timer of timers.values()) clearTimeout(timer);
         timers.clear();
         buckets.clear();
+        counters.clear();
     }
 
     return { recordEvent, flush, stop };
 }
 
-module.exports = { createRealtimePushService, EVENT_LABELS };
+module.exports = { createRealtimePushService, deliverRealtimeMessage, EVENT_LABELS };

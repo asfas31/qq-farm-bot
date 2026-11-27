@@ -657,9 +657,13 @@ async function startQqLogin() {
       const retryMs = getApiRetryAfterMs(error)
       const errorCode = String(((error as any)?.response?.data?.errorCode) || (error as any)?.code || '').toUpperCase()
       if (errorCode === 'NAPCAT_REINIT') {
-        // 内核已在自动重启，给用户明确预期，避免以为坏了。
-        qqStatus.value = 'QQ 登录内核正在自动重启'
-        startQqCooldown(retryMs > 0 ? Math.ceil(retryMs / 1000) : 60)
+        // 没有装 NapCat 内核时每次取码都会进这个分支；不再启动自动重试，
+        // 否则倒计时一到就再次失败，页面会堆满「内核重启 / 冷却中 / 请等待 N 秒」。
+        qqAutoRefreshAfterInit = false
+        stopQqCooldown()
+        qqStatus.value = qqCaptureEnabled.value
+          ? 'QQ 扫码内核不可用，请改用「QQ抓包」登录'
+          : 'QQ 扫码内核不可用，请检查 NapCat 是否已安装'
       }
       else {
         startQqCooldown(retryMs > 0 ? Math.ceil(retryMs / 1000) : QQ_COOLDOWN_SECONDS)

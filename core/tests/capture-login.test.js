@@ -5,7 +5,7 @@ const test = require('node:test');
 const express = require('express');
 
 const { createCaptureRouter } = require('../dist/controllers/admin/capture-routes');
-const { normalizeCaptureSession } = require('../dist/services/capture-client');
+const { normalizeCaptureSession, CaptureClient } = require('../dist/services/capture-client');
 
 async function startServer(router) {
     const app = express();
@@ -41,6 +41,29 @@ test('normalizeCaptureSession flattens gateway payloads', () => {
     assert.equal(result.sessionId, 'abc');
     assert.equal(result.statusText, '手机已连接');
     assert.equal(result.status, 'ready');
+});
+
+test('capture client targets the gateway /api session endpoints', async () => {
+    const paths = [];
+    const fakeFetch = async (url, init) => {
+        paths.push({ path: new URL(url).pathname, method: init.method });
+        return {
+            ok: true,
+            status: 200,
+            json: async () => ({ session: { id: 'x', status: 'waiting' } }),
+        };
+    };
+    const client = new CaptureClient({ baseUrl: 'http://gateway', fetch: fakeFetch });
+
+    await client.startSession();
+    await client.pollSession('x');
+    await client.cancelSession('x');
+
+    assert.deepEqual(paths, [
+        { path: '/api/session/start', method: 'POST' },
+        { path: '/api/session/x', method: 'GET' },
+        { path: '/api/session/x/stop', method: 'POST' },
+    ]);
 });
 
 test('capture routes expose session lifecycle', async () => {

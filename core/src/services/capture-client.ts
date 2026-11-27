@@ -82,22 +82,22 @@ class CaptureClient {
     }
 
     async startSession(input: Record<string, unknown> = {}): Promise<any> {
-        return normalizeCaptureSession(await this.request('/session/start', {
+        return normalizeCaptureSession(await this.request('/api/session/start', {
             method: 'POST',
             body: { platform: 'qq', ...input },
         }));
     }
 
     async pollSession(sessionId: string): Promise<any> {
-        return normalizeCaptureSession(await this.request(`/session/${encodeURIComponent(String(sessionId))}`));
+        return normalizeCaptureSession(await this.request(`/api/session/${encodeURIComponent(String(sessionId))}`));
     }
 
     async cancelSession(sessionId: string): Promise<any> {
-        return normalizeCaptureSession(await this.request(`/session/${encodeURIComponent(String(sessionId))}/stop`, { method: 'POST' }));
+        return normalizeCaptureSession(await this.request(`/api/session/${encodeURIComponent(String(sessionId))}/stop`, { method: 'POST' }));
     }
 
     async getCert(): Promise<{ buffer: Buffer, contentType: string }> {
-        return this.requestBinary('/cert');
+        return this.requestBinary('/api/cert');
     }
 }
 

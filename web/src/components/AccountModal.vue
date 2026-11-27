@@ -666,6 +666,8 @@ async function startQqLogin() {
         qqAutoRefreshAfterInit = false
         stopQqCooldown()
         qqQrUnavailable.value = true
+        // 已经有明确的不可用提示，底层原文（NapCat 接口返回失败）不再重复展示。
+        qqError.value = ''
         qqStatus.value = qqCaptureEnabled.value
           ? 'QQ 扫码内核不可用，请改用「QQ抓包」登录'
           : 'QQ 扫码内核不可用，请检查 NapCat 是否已安装'
@@ -915,7 +917,7 @@ onBeforeUnmount(() => {
               <span class="i-carbon-time mr-1 inline-block align-middle" />
               冷却中，{{ qqCooldownLeft }} 秒后可重新获取二维码
             </p>
-            <p v-if="qqError" class="text-sm text-red-500">
+            <p v-if="qqError && !qqQrUnavailable" class="text-sm text-red-500">
               {{ qqError }}
             </p>
           </div>

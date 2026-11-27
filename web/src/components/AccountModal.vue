@@ -48,6 +48,7 @@ const qqStatus = ref('')
 const qqError = ref('')
 const qqLoading = ref(false)
 const qqQrUrl = ref('')
+const qqQrUnavailable = ref(false)
 /**
  * 二维码取码冷却。
  * NapCat 取码要走 WebUI → QQ 内核，内核未就绪时一次失败要等 10s（QRCode Get Error），
@@ -464,6 +465,7 @@ function resetQqLogin() {
   qqStatus.value = ''
   qqError.value = ''
   qqQrUrl.value = ''
+  qqQrUnavailable.value = false
   qqLoading.value = false
   qqPendingCode = ''
   qqAutoRefreshAfterInit = false
@@ -630,6 +632,7 @@ async function startQqLogin() {
     return
   }
   resetQqLogin()
+  qqQrUnavailable.value = false
   const flowVersion = qqFlowVersion
   qqLoading.value = true
   try {
@@ -656,11 +659,13 @@ async function startQqLogin() {
       // 优先用后端给的 retryAfterMs（WORKFLOW_BUSY 会带精确剩余时间），没有则用默认冷却。
       const retryMs = getApiRetryAfterMs(error)
       const errorCode = String(((error as any)?.response?.data?.errorCode) || (error as any)?.code || '').toUpperCase()
-      if (errorCode === 'NAPCAT_REINIT') {
-        // 没有装 NapCat 内核时每次取码都会进这个分支；不再启动自动重试，
-        // 否则倒计时一到就再次失败，页面会堆满「内核重启 / 冷却中 / 请等待 N 秒」。
+      // NapCat 没装或连不上时，任何错误码都不要再进自动重试；
+      // 否则倒计时一到就再次失败，页面会堆满「取码失败 / 冷却中 / 请等待 N 秒」。
+      const napcatFailure = errorCode.startsWith('NAPCAT_') || /NapCat/i.test(qqError.value)
+      if (napcatFailure) {
         qqAutoRefreshAfterInit = false
         stopQqCooldown()
+        qqQrUnavailable.value = true
         qqStatus.value = qqCaptureEnabled.value
           ? 'QQ 扫码内核不可用，请改用「QQ抓包」登录'
           : 'QQ 扫码内核不可用，请检查 NapCat 是否已安装'
@@ -901,7 +906,7 @@ onBeforeUnmount(() => {
             </div>
             <div v-else class="h-52 w-52 flex flex-col items-center justify-center gap-1 text-sm opacity-60">
               <span class="i-carbon-qr-code text-3xl" />
-              <span>{{ qqLoading ? '正在获取二维码...' : '二维码不可用' }}</span>
+              <span>{{ qqLoading ? '正在获取二维码...' : (qqQrUnavailable ? 'QQ 扫码不可用' : '二维码不可用') }}</span>
             </div>
             <p class="text-sm" :style="{ color: 'var(--theme-text)' }">
               {{ qqStatus }}
@@ -915,10 +920,13 @@ onBeforeUnmount(() => {
             </p>
           </div>
           <div class="flex justify-end gap-2">
-            <BaseButton variant="outline" :loading="qqInitLoading" :disabled="qqInitLoading || qqLoading" @click="initQqLoginCore">
+            <BaseButton v-if="qqQrUnavailable && qqCaptureEnabled" variant="primary" @click="activeLoginTab = 'qq_capture'">
+              改用 QQ抓包
+            </BaseButton>
+            <BaseButton v-if="!qqQrUnavailable" variant="outline" :loading="qqInitLoading" :disabled="qqInitLoading || qqLoading" @click="initQqLoginCore">
               {{ qqInitLoading ? '初始化中…' : '初始化扫码' }}
             </BaseButton>
-            <BaseButton variant="outline" :loading="qqLoading" :disabled="qqCooldownLeft > 0 || qqInitLoading" @click="startQqLogin">
+            <BaseButton v-if="!qqQrUnavailable" variant="outline" :loading="qqLoading" :disabled="qqCooldownLeft > 0 || qqInitLoading" @click="startQqLogin">
               {{ qqCooldownLeft > 0 ? `刷新二维码 (${qqCooldownLeft}s)` : '刷新二维码' }}
             </BaseButton>
             <BaseButton variant="outline" @click="close">

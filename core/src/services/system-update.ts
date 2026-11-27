@@ -79,7 +79,7 @@ export interface SystemUpdateServiceOptions {
     invocationId?: string;
     controlManaged?: boolean;
     spawnRunner?: typeof spawn;
-    execGit?: (cwd: string, args: string[]) => Promise<string>;
+    execGit?: (cwd: string, args: string[], opts?: { timeoutMs?: number }) => Promise<string>;
     now?: () => number;
 }
 
@@ -87,7 +87,10 @@ function createUpdateError(message: string, statusCode = 400, code = 'SYSTEM_UPD
     return Object.assign(new Error(message), { statusCode, code });
 }
 
-function defaultExecGit(cwd: string, args: string[]): Promise<string> {
+function defaultExecGit(cwd: string, args: string[], opts: { timeoutMs?: number } = {}): Promise<string> {
+    // 拉取/检查更新走公网，GitHub 在国内线路经常长时间无响应，
+    // 默认 25s 只够本地操作；网络类命令由调用方传更长的超时。
+    const timeoutMs = Number.isFinite(opts.timeoutMs) ? Number(opts.timeoutMs) : 25000;
     return new Promise((resolve, reject) => {
         execFile('git', args, {
             cwd,
@@ -96,7 +99,7 @@ function defaultExecGit(cwd: string, args: string[]): Promise<string> {
                 GIT_TERMINAL_PROMPT: '0',
                 LC_ALL: 'C',
             },
-            timeout: 25000,
+            timeout: timeoutMs,
             maxBuffer: 2 * 1024 * 1024,
             windowsHide: true,
         }, (err: any, stdout: string, stderr: string) => {
@@ -104,8 +107,11 @@ function defaultExecGit(cwd: string, args: string[]): Promise<string> {
                 resolve(String(stdout || ''));
                 return;
             }
-            const detail = String(stderr || stdout || err.message || 'Git 执行失败').trim();
-            reject(Object.assign(new Error(detail), { code: err.code || 'GIT_EXEC_FAILED' }));
+            const timedOut = err.killed === true || err.code === 'ETIMEDOUT' || err.signal === 'SIGTERM';
+            const detail = timedOut
+                ? `git ${args.find(arg => !arg.startsWith('-') && !arg.includes('=')) || args[0] || ''} 超时（${Math.round(timeoutMs / 1000)}s），远程无响应或网络不稳定`
+                : String(stderr || stdout || err.message || 'Git 执行失败').trim();
+            reject(Object.assign(new Error(detail), { code: timedOut ? 'GIT_TIMEOUT' : (err.code || 'GIT_EXEC_FAILED') }));
         });
     });
 }
@@ -139,6 +145,35 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
     let lastCheckError = '';
     let lastPulledAt: number | null = null;
     let operationLock: Promise<any> = Promise.resolve();
+
+    /**
+     * 公网 git 操作统一入口：慢速阈值让卡死的连接主动断开，
+     * 多次重试抵消 GitHub 线路抖动；每次尝试的耗时按指数退避。
+     */
+    const execGitNetwork = async (
+        cwd: string,
+        args: string[],
+        opts: { attempts?: number; timeoutMs?: number } = {},
+    ): Promise<string> => {
+        const attempts = Math.max(1, opts.attempts ?? 3);
+        const timeoutMs = Math.max(5000, opts.timeoutMs ?? 60000);
+        let lastError: any = null;
+        for (let attempt = 0; attempt < attempts; attempt++) {
+            try {
+                return await execGit(cwd, [
+                    '-c', 'http.lowSpeedLimit=1000',
+                    '-c', 'http.lowSpeedTime=20',
+                    ...args,
+                ], { timeoutMs });
+            } catch (err: any) {
+                lastError = err;
+                if (attempt < attempts - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1)));
+                }
+            }
+        }
+        throw lastError;
+    };
 
     const withOpMutex = async <T>(fn: () => Promise<T>): Promise<T> => {
         const previous = operationLock;
@@ -551,7 +586,7 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
             throw createUpdateError('当前分支未关联远程跟踪分支，或处于游离 HEAD 状态', 400, 'NO_UPSTREAM');
         }
         try {
-            await execGit(envInfo.repoRoot, ['fetch', '--prune', repo.remote]);
+            await execGitNetwork(envInfo.repoRoot, ['fetch', '--prune', repo.remote], { attempts: 3, timeoutMs: 60000 });
             lastCheckedAt = now();
             lastCheckError = '';
         } catch (err: any) {
@@ -589,7 +624,7 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
 
         const fromCommit = repo.shortCommit;
         try {
-            await execGit(envInfo.repoRoot, ['pull', '--ff-only', repo.remote, repo.remoteBranch]);
+            await execGitNetwork(envInfo.repoRoot, ['pull', '--ff-only', repo.remote, repo.remoteBranch], { attempts: 2, timeoutMs: 90000 });
             lastPulledAt = now();
         } catch (err: any) {
             throw createUpdateError(`拉取代码失败：${err?.message || 'git pull 执行失败'}`, 400, 'GIT_PULL_FAILED');

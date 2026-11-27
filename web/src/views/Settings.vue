@@ -1869,6 +1869,9 @@ interface SystemUpdateState {
   canCheck: boolean
   canPull: boolean
   canApply: boolean
+  restartSupported: boolean
+  restartManager: 'systemd' | 'control' | 'none'
+  restartReason: string
   deployBusy: boolean
   lastCheckedAt: number | null
   lastCheckError: string
@@ -1895,6 +1898,8 @@ const updateLoading = ref(false)
 const updateChecking = ref(false)
 const updatePulling = ref(false)
 const updateApplying = ref(false)
+const updateRestarting = ref(false)
+const restartConfirmOpen = ref(false)
 const updateActionError = ref('')
 const updateRequestConfig = { skipErrorToast: true, timeout: 90_000 }
 let updateViewActive = true
@@ -2022,6 +2027,44 @@ async function handleApplySystemUpdate(pullFirst: boolean) {
   }
   finally {
     updateApplying.value = false
+  }
+}
+
+const restartConfirmMessage = computed(() => {
+  const manager = updateStatus.value?.restartManager === 'systemd' ? 'systemd' : '守护进程'
+  return `确定重启面板服务吗？当前连接会断开，${manager} 会在约 5 秒内自动拉起。正在运行的账号连接会中断，需要重新建立会话。`
+})
+
+function requestRestartService() {
+  if (updateRestarting.value || updateStatus.value?.deployBusy)
+    return
+  restartConfirmOpen.value = true
+}
+
+async function confirmRestartService() {
+  if (updateRestarting.value)
+    return
+  updateRestarting.value = true
+  updateActionError.value = ''
+  try {
+    const { data } = await api.post('/api/system/restart', {}, updateRequestConfig)
+    if (!data?.ok)
+      throw new Error(getApiErrorMessage(data, '重启失败'))
+    restartConfirmOpen.value = false
+    toast.info(data.data?.manager === 'systemd'
+      ? '正在重启，systemd 将在约 5 秒内拉起服务'
+      : '正在重启，守护进程将自动拉起服务')
+    // 重启期间 HTTP 会断开；已有重连监听会刷新状态，这里再兜一次定时拉取。
+    window.setTimeout(() => {
+      void loadUpdateStatus({ silent: true })
+    }, 8000)
+  }
+  catch (e: any) {
+    updateActionError.value = getApiErrorMessage(e, '重启失败')
+    restartConfirmOpen.value = false
+  }
+  finally {
+    updateRestarting.value = false
   }
 }
 
@@ -3169,6 +3212,17 @@ onBeforeUnmount(() => {
                       >
                         应用更新
                       </BaseButton>
+                      <BaseButton
+                        v-if="updateStatus.restartSupported"
+                        variant="secondary"
+                        size="sm"
+                        :loading="updateRestarting"
+                        :disabled="updateChecking || updatePulling || updateApplying || updateStatus.deployBusy"
+                        :title="updateStatus.restartReason"
+                        @click="requestRestartService"
+                      >
+                        <span class="i-carbon-restart mr-1" aria-hidden="true" />重启服务
+                      </BaseButton>
                     </div>
                   </header>
 
@@ -3215,6 +3269,10 @@ onBeforeUnmount(() => {
 
                     <div v-if="updateStatus.hostMaintenance" class="update-notice update-notice--muted">
                       {{ updateStatus.hostMaintenance }}
+                    </div>
+
+                    <div v-if="updateStatus.restartSupported" class="update-notice update-notice--info">
+                      {{ updateStatus.restartReason }}。拉取代码后如果提示「待应用」，先完成构建，再点「重启服务」让已构建的版本生效。
                     </div>
 
                     <div v-if="updateStatus.behindCount > 0" class="update-block">
@@ -3294,6 +3352,16 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <ConfirmModal
+      :show="restartConfirmOpen"
+      :loading="updateRestarting"
+      title="重启面板服务"
+      :message="restartConfirmMessage"
+      confirm-text="立即重启"
+      type="danger"
+      @cancel="restartConfirmOpen = false"
+      @confirm="confirmRestartService"
+    />
     <ConfirmModal
       :show="modalVisible"
       :title="modalConfig.title"

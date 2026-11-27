@@ -99,6 +99,7 @@
 - 历史版本与回滚：通过 `start.sh` 启动或在线更新后自动生成备份，可在「历史版本与回滚」面板恢复或删除
 - 更新任务状态写入 `runtime/panel-update-job.json`，日志在 `runtime/panel-update-job.log`；拉取前会检查工作区未提交修改与部署锁
 - 更新源为本仓库 `origin/main`（`https://github.com/asfas31/qq-farm-bot`）：本仓库即个人自用更新仓库，提交记录就是本人实例的更新记录，不跟随其他上游仓库
+- systemd / `start.sh` 托管时设置页显示「重启服务」按钮：先拉取代码并完成构建，再点按钮；面板回包后给自身发 `SIGTERM`，由守护机制拉起新进程。直接 `node` 启动时按钮隐藏，避免把面板关掉后无人拉起
 
 ## 技术栈
 

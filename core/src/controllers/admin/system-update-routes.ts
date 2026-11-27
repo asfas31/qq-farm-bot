@@ -47,6 +47,26 @@ function mountSystemUpdateRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
+    app.post('/api/system/restart', authRequired, async (_req: Request, res: Response) => {
+        try {
+            const data = await systemUpdate.restartSystemService();
+            // 等响应发完再退出：client.js 的 SIGTERM 处理会停 HTTP 服务并 detach worker，
+            // 之后由 systemd / start.sh 自动拉起新进程。
+            res.once('finish', () => {
+                setTimeout(() => {
+                    try {
+                        process.kill(process.pid, 'SIGTERM');
+                    } catch {
+                        process.exit(0);
+                    }
+                }, data.delayMs);
+            });
+            res.json({ ok: true, data });
+        } catch (err: any) {
+            sendUpdateError(res, err);
+        }
+    });
+
     app.post('/api/system/update/apply', authRequired, async (req: Request, res: Response) => {
         try {
             const pullFirst = req.body?.pullFirst !== false;

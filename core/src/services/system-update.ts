@@ -60,6 +60,9 @@ export interface SystemUpdateStatus {
     canCheck: boolean;
     canPull: boolean;
     canApply: boolean;
+    restartSupported: boolean;
+    restartManager: 'systemd' | 'control' | 'none';
+    restartReason: string;
     deployBusy: boolean;
     lastCheckedAt: number | null;
     lastCheckError: string;
@@ -85,6 +88,24 @@ export interface SystemUpdateServiceOptions {
 
 function createUpdateError(message: string, statusCode = 400, code = 'SYSTEM_UPDATE_ERROR'): Error {
     return Object.assign(new Error(message), { statusCode, code });
+}
+
+/**
+ * 网页内重启依赖进程退出后被自动拉起：systemd 的 Restart=always 或 start.sh 守护。
+ * 直接 node 启动时退出就真的停了，必须拒绝，否则点一下按钮就把面板关掉。
+ */
+export function resolveRestartSupport(invocationId: string, controlManaged: boolean): {
+    supported: boolean;
+    manager: 'systemd' | 'control' | 'none';
+    reason: string;
+} {
+    if (invocationId) {
+        return { supported: true, manager: 'systemd', reason: 'systemd 会在进程退出后自动拉起服务' };
+    }
+    if (controlManaged) {
+        return { supported: true, manager: 'control', reason: 'start.sh 守护进程会在进程退出后自动拉起服务' };
+    }
+    return { supported: false, manager: 'none', reason: '当前进程没有自动拉起机制，重启后面板不会恢复，需到终端手动重启' };
 }
 
 function defaultExecGit(cwd: string, args: string[], opts: { timeoutMs?: number } = {}): Promise<string> {
@@ -188,6 +209,11 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
             release();
         }
     };
+
+    const getRestartSupport = () => resolveRestartSupport(
+        options.invocationId ?? process.env.INVOCATION_ID ?? '',
+        options.controlManaged ?? (process.env.FARM_CONTROL_MANAGED === '1'),
+    );
 
     const getPaths = () => {
         const paths = getRuntimePaths();
@@ -439,6 +465,7 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
 
     const getStatus = async (refresh = false): Promise<SystemUpdateStatus> => {
         const envInfo = await detectEnv();
+        const restart = getRestartSupport();
         const job = readJobState(envInfo.paths.runtimeDir);
         const deployBusy = job?.status === 'running' || isDeployLockAlive(envInfo.paths.runtimeDir);
         const releasesDir = getReleasesDirForEnv(envInfo);
@@ -481,6 +508,9 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
                 canCheck: false,
                 canPull: false,
                 canApply: false,
+                restartSupported: restart.supported,
+                restartManager: restart.manager,
+                restartReason: restart.reason,
                 deployBusy,
                 lastCheckedAt,
                 lastCheckError,
@@ -565,6 +595,9 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
             canCheck,
             canPull,
             canApply,
+            restartSupported: restart.supported,
+            restartManager: restart.manager,
+            restartReason: restart.reason,
             deployBusy,
             lastCheckedAt,
             lastCheckError,
@@ -841,6 +874,33 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
         return { keepBackups: enabled };
     });
 
+    /**
+     * 网页重启只做前置校验：真正的退出由路由在响应发完后发 SIGTERM，
+     * client.js 会优雅停掉 HTTP 服务与 worker，再由 systemd / start.sh 拉起。
+     */
+    const restartService = async () => {
+        const restart = getRestartSupport();
+        const status = await getStatus();
+        if (status.mode === 'docker') {
+            throw createUpdateError('Docker 容器请用 docker compose restart qq-farm-bot 重启', 400, 'RESTART_UNSUPPORTED');
+        }
+        if (status.mode === 'binary') {
+            throw createUpdateError('独立可执行文件请在终端重启进程', 400, 'RESTART_UNSUPPORTED');
+        }
+        if (!restart.supported) {
+            throw createUpdateError(restart.reason, 400, 'RESTART_UNSUPPORTED');
+        }
+        if (status.deployBusy || status.job?.status === 'running') {
+            throw createUpdateError('更新任务正在运行，请等任务结束后再重启', 409, 'DEPLOY_BUSY');
+        }
+        return {
+            restarting: true,
+            manager: restart.manager,
+            reason: restart.reason,
+            delayMs: 800,
+        };
+    };
+
     return {
         getStatus,
         checkForUpdates,
@@ -849,6 +909,7 @@ function createSystemUpdateService(options: SystemUpdateServiceOptions = {}) {
         rollbackRelease,
         deleteReleases,
         setBackupEnabled,
+        restartService,
     };
 }
 
@@ -856,6 +917,7 @@ const defaultSystemUpdateService = createSystemUpdateService();
 
 module.exports = {
     createSystemUpdateService,
+    resolveRestartSupport,
     getSystemUpdateStatus: () => defaultSystemUpdateService.getStatus(),
     checkSystemUpdates: () => defaultSystemUpdateService.checkForUpdates(),
     pullSystemUpdates: () => defaultSystemUpdateService.pullUpdates(),
@@ -863,4 +925,5 @@ module.exports = {
     rollbackSystemRelease: (releaseId: unknown) => defaultSystemUpdateService.rollbackRelease(releaseId),
     deleteSystemReleases: (payload?: { releaseIds?: unknown; cleanOrphans?: unknown }) => defaultSystemUpdateService.deleteReleases(payload),
     setSystemBackupEnabled: (enabled: unknown) => defaultSystemUpdateService.setBackupEnabled(enabled),
+    restartSystemService: () => defaultSystemUpdateService.restartService(),
 };

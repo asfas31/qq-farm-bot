@@ -802,18 +802,18 @@ onBeforeUnmount(() => {
           {{ errorMessage }}
         </div>
 
-        <NTabs v-if="loginSettingsLoaded" v-model:value="activeLoginTab" class="mb-4" type="line">
+        <NTabs v-if="loginSettingsLoaded" v-model:value="activeLoginTab" class="login-tabs mb-4" type="line">
           <NTab name="code">
-            输入 Code 登录
+            Code
           </NTab>
           <NTab v-if="wechatQrLoginEnabled" name="wx_qr">
-            微信扫码登录
+            微信扫码
           </NTab>
           <NTab v-if="qqQrLoginEnabled" name="qq_qr">
-            QQ扫码登录
+            QQ扫码
           </NTab>
           <NTab v-if="qqCaptureEnabled" name="qq_capture">
-            QQ自动抓包
+            QQ抓包
           </NTab>
         </NTabs>
 
@@ -948,5 +948,14 @@ onBeforeUnmount(() => {
 
 .account-modal-content {
   max-height: calc(90vh - 100px);
+}
+
+/* 四个登录页签挤在 448px 弹窗里，缩短标签并收紧内边距，避免横向溢出。 */
+.login-tabs :deep(.n-tabs-tab) {
+  padding: 0 8px;
+}
+
+.login-tabs :deep(.n-tabs-tab__label) {
+  font-size: 12px;
 }
 </style>

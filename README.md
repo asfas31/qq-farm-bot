@@ -8,11 +8,11 @@
 ## 项目截图
 |  |  |
 | --- | --- |
-| ![项目截图 1](https://free.picui.cn/free/2026/08/21/6a87f4e28ce59.jpg) | ![项目截图 2](https://free.picui.cn/free/2026/08/21/6a87f4e2e5557.jpg) |
-| ![项目截图 3](https://free.picui.cn/free/2026/08/21/6a87f4e3780bb.jpg) | ![项目截图 4](https://free.picui.cn/free/2026/08/21/6a87f4e398c30.jpg) |
-| ![项目截图 5](https://free.picui.cn/free/2026/08/21/6a87f4e8bbbce.jpg) | ![项目截图 6](https://free.picui.cn/free/2026/08/21/6a87f4e90d06c.jpg) |
-| ![项目截图 7](https://free.picui.cn/free/2026/08/21/6a87f4e95678d.jpg) | ![项目截图 8](https://free.picui.cn/free/2026/08/21/6a87f4e958eae.jpg) |
-| ![项目截图 9](https://free.picui.cn/free/2026/08/21/6a87f4e91bccb.jpg) | ![项目截图 10](https://free.picui.cn/free/2026/08/21/6a87f4e355da8.jpg) |
+| ![项目截图 1](docs/images/screenshots/screenshot-1.jpg) | ![项目截图 2](docs/images/screenshots/screenshot-2.jpg) |
+| ![项目截图 3](docs/images/screenshots/screenshot-3.jpg) | ![项目截图 4](docs/images/screenshots/screenshot-4.jpg) |
+| ![项目截图 5](docs/images/screenshots/screenshot-5.jpg) | ![项目截图 6](docs/images/screenshots/screenshot-6.jpg) |
+| ![项目截图 7](docs/images/screenshots/screenshot-7.jpg) | ![项目截图 8](docs/images/screenshots/screenshot-8.jpg) |
+| ![项目截图 9](docs/images/screenshots/screenshot-9.jpg) | ![项目截图 10](docs/images/screenshots/screenshot-10.jpg) |
 
 ## 功能概览
 
@@ -87,6 +87,14 @@
 - 实时操作推送：收获、播种、出售、偷菜、施肥、帮忙、任务领取、升级、牧场收获/生产/偷取等事件，按聚合窗口 + 最小间隔 + 每日上限发送
 - 离线提醒：账号下线、神秘商人到访与购买、通知测试各自独立卡片
 - 免费领卡密只发放管理员预先生成的卡密，卡池为空时直接提示补充，不现场生成
+
+### 在线更新与回滚
+
+- 源码运行且仓库内存在 `.git`、系统装有 `git` 时，设置页「版本更新」可检查远程分支、拉取代码并查看当前提交
+- 一键应用更新要求 `tools/service-control.mjs` 且由 `start.sh` 后台托管（`FARM_CONTROL_MANAGED=1`）；systemd 托管时只拉取代码，重启交给 systemd
+- 独立可执行文件与 Docker 不支持网页内自更新：二进制下载新版本，Docker 执行 `docker compose up -d --build --no-deps qq-farm-bot`
+- 历史版本与回滚：通过 `start.sh` 启动或在线更新后自动生成备份，可在「历史版本与回滚」面板恢复或删除
+- 更新任务状态写入 `runtime/panel-update-job.json`，日志在 `runtime/panel-update-job.log`；拉取前会检查工作区未提交修改与部署锁
 
 ## 技术栈
 

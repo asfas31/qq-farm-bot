@@ -72,12 +72,12 @@ function normalizeAccount(raw: any): Account {
 }
 
 function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): AccountsData {
-    const { ensureAccountConfig } = require('./account-config');
+    const { ensureAccountConfig, setKnownFriendGids } = require('./account-config');
     const data = getAccounts();
     let touchedAccountId = '';
     const source: any = acc || {};
     const cleanAccount: any = {};
-    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick', 'ownerId']) {
+    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick', 'ownerId', 'knownFriendGids']) {
         if (source[key] !== undefined) cleanAccount[key] = source[key];
     }
     acc = cleanAccount;
@@ -105,6 +105,10 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
     }
     if (touchedAccountId) {
         ensureAccountConfig(touchedAccountId);
+        // QQ 自动抓包会顺带拿到好友 GID，建号时直接落库，省掉首次巡查同步。
+        if (Array.isArray(source.knownFriendGids) && source.knownFriendGids.length) {
+            setKnownFriendGids(touchedAccountId, source.knownFriendGids);
+        }
     }
     saveAccounts(data);
     return data;

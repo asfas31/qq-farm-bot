@@ -134,6 +134,10 @@ function normalizeLoginSettings(input: unknown): LoginSettings {
         qqQrLogin: typeof src.qqQrLogin === 'boolean' ? src.qqQrLogin : DEFAULT_LOGIN_SETTINGS.qqQrLogin,
         napCatEndpoint: typeof src.napCatEndpoint === 'string' ? src.napCatEndpoint.trim() : DEFAULT_LOGIN_SETTINGS.napCatEndpoint,
         napCatSignature: typeof src.napCatSignature === 'string' ? src.napCatSignature.trim() : DEFAULT_LOGIN_SETTINGS.napCatSignature,
+        qqCaptureEnabled: typeof src.qqCaptureEnabled === 'boolean' ? src.qqCaptureEnabled : DEFAULT_LOGIN_SETTINGS.qqCaptureEnabled,
+        qqCaptureApiUrl: typeof src.qqCaptureApiUrl === 'string'
+            ? src.qqCaptureApiUrl.trim().replace(/\/+$/, '')
+            : DEFAULT_LOGIN_SETTINGS.qqCaptureApiUrl,
     };
 }
 
@@ -145,6 +149,9 @@ function setLoginSettings(cfg: Partial<LoginSettings> | undefined): LoginSetting
     const next = normalizeLoginSettings({ ...getLoginSettings(), ...(cfg || {}) });
     if (next.qqQrLogin && (!next.napCatEndpoint || !next.napCatSignature)) {
         throw new Error('开启 QQ 扫码登录前，请配置 NapCat 接口地址和接口签名');
+    }
+    if (next.qqCaptureEnabled && !next.qqCaptureApiUrl && !process.env.QQ_CAPTURE_API_URL) {
+        throw new Error('开启 QQ 自动抓包登录前，请配置抓包服务地址');
     }
     saveGlobalConfig({ loginSettings: next });
     return getLoginSettings();

@@ -5,6 +5,7 @@ import { NRadio, NRadioGroup } from 'naive-ui/es/radio'
 import { NTab, NTabs } from 'naive-ui/es/tabs'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import api, { getApiErrorMessage, getApiRetryAfterMs } from '@/api'
+import QqCapturePanel from '@/components/QqCapturePanel.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
@@ -19,13 +20,15 @@ const emit = defineEmits(['close', 'saved'])
 
 const loading = ref(false)
 const errorMessage = ref('')
-const activeLoginTab = ref<'code' | 'wx_qr' | 'qq_qr'>('code')
+const activeLoginTab = ref<'code' | 'wx_qr' | 'qq_qr' | 'qq_capture'>('code')
 const loginSettingsLoaded = ref(false)
 const loginSettings = ref({
   wechatQrLogin: true,
   qqQrLogin: false,
   napCatEndpoint: '',
   napCatSignature: '',
+  qqCaptureEnabled: false,
+  qqCaptureApiUrl: '',
 })
 let loginSettingsRequestVersion = 0
 const wxTaskId = ref('')
@@ -90,6 +93,7 @@ let qrNameSubmitTimer: ReturnType<typeof setTimeout> | undefined
 
 const wechatQrLoginEnabled = computed(() => loginSettingsLoaded.value && loginSettings.value.wechatQrLogin)
 const qqQrLoginEnabled = computed(() => loginSettingsLoaded.value && loginSettings.value.qqQrLogin)
+const qqCaptureEnabled = computed(() => loginSettingsLoaded.value && loginSettings.value.qqCaptureEnabled)
 
 // 表单数据
 const form = reactive({
@@ -127,6 +131,22 @@ async function addAccount(data: any, isRelogin = false) {
   }
 
   return false
+}
+
+// QQ 自动抓包拿到 Code 后直接建号，好友 GID 顺带落库。
+async function handleCaptureImported(payload: any) {
+  const code = String(payload?.code || '').trim()
+  if (!code) {
+    errorMessage.value = '抓包结果里没有登录 Code，请重新开始'
+    return
+  }
+  await addAccount({
+    name: form.name.trim() || String(payload?.name || '').trim() || 'QQ 抓包账号',
+    code,
+    platform: 'qq',
+    loginType: 'qq_capture',
+    knownFriendGids: Array.isArray(payload?.friendGids) ? payload.friendGids : undefined,
+  }, !!props.editData)
 }
 
 function clearQrNameSubmitTimer() {
@@ -199,6 +219,8 @@ async function loadLoginSettings() {
       qqQrLogin: typeof data?.qqQrLogin === 'boolean' ? data.qqQrLogin : false,
       napCatEndpoint: typeof data?.napCatEndpoint === 'string' ? data.napCatEndpoint : '',
       napCatSignature: typeof data?.napCatSignature === 'string' ? data.napCatSignature : '',
+      qqCaptureEnabled: data?.qqCaptureEnabled === true,
+      qqCaptureApiUrl: typeof data?.qqCaptureApiUrl === 'string' ? data.qqCaptureApiUrl : '',
     }
   }
   catch {
@@ -210,6 +232,8 @@ async function loadLoginSettings() {
       qqQrLogin: false,
       napCatEndpoint: '',
       napCatSignature: '',
+      qqCaptureEnabled: false,
+      qqCaptureApiUrl: '',
     }
   }
   finally {
@@ -731,6 +755,8 @@ watch(activeLoginTab, (tab) => {
     void startQqLogin()
   else if (tab === 'qq_qr' && !qqQrLoginEnabled.value)
     activeLoginTab.value = 'code'
+  else if (tab === 'qq_capture' && !qqCaptureEnabled.value)
+    activeLoginTab.value = 'code'
   if (tab !== 'wx_qr')
     resetWxLogin()
   if (tab !== 'qq_qr')
@@ -785,6 +811,9 @@ onBeforeUnmount(() => {
           </NTab>
           <NTab v-if="qqQrLoginEnabled" name="qq_qr">
             QQ扫码登录
+          </NTab>
+          <NTab v-if="qqCaptureEnabled" name="qq_capture">
+            QQ自动抓包
           </NTab>
         </NTabs>
 
@@ -888,6 +917,20 @@ onBeforeUnmount(() => {
             <BaseButton variant="outline" :loading="qqLoading" :disabled="qqCooldownLeft > 0 || qqInitLoading" @click="startQqLogin">
               {{ qqCooldownLeft > 0 ? `刷新二维码 (${qqCooldownLeft}s)` : '刷新二维码' }}
             </BaseButton>
+            <BaseButton variant="outline" @click="close">
+              取消
+            </BaseButton>
+          </div>
+        </div>
+        <div v-else-if="activeLoginTab === 'qq_capture'" class="space-y-4" role="tabpanel" aria-label="QQ自动抓包登录">
+          <BaseInput
+            v-model="form.name"
+            label="账号备注（可留空）"
+            placeholder="留空时使用抓包到的昵称"
+            class="farm-input"
+          />
+          <QqCapturePanel @captured="handleCaptureImported" />
+          <div class="flex justify-end gap-2">
             <BaseButton variant="outline" @click="close">
               取消
             </BaseButton>

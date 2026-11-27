@@ -676,7 +676,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     timeZones: getTimeZoneOptions(),
                     loginSettings: store.getLoginSettings
                         ? store.getLoginSettings()
-                        : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '' },
+                        : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '', qqCaptureEnabled: false, qqCaptureApiUrl: '' },
                 },
             });
         } catch (e: any) {
@@ -696,6 +696,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     data: {
                         wechatQrLogin: loginSettings.wechatQrLogin !== false,
                         qqQrLogin: loginSettings.qqQrLogin === true,
+                        qqCaptureEnabled: loginSettings.qqCaptureEnabled === true,
                     },
                 });
             }
@@ -714,6 +715,8 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     qqQrLogin: body.qqQrLogin,
                     napCatEndpoint: body.napCatEndpoint,
                     napCatSignature: body.napCatSignature,
+                    qqCaptureEnabled: body.qqCaptureEnabled,
+                    qqCaptureApiUrl: body.qqCaptureApiUrl,
                 })
                 : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '' };
             res.json({ ok: true, data: loginSettings });

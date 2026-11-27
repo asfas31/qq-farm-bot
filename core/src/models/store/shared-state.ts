@@ -47,6 +47,8 @@ const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
     qqQrLogin: false,
     napCatEndpoint: '',
     napCatSignature: '',
+    qqCaptureEnabled: false,
+    qqCaptureApiUrl: '',
 };
 
 const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
@@ -623,6 +625,12 @@ function loadGlobalConfig(): void {
                     napCatSignature: typeof data.loginSettings.napCatSignature === 'string'
                         ? data.loginSettings.napCatSignature.trim()
                         : DEFAULT_LOGIN_SETTINGS.napCatSignature,
+                    qqCaptureEnabled: typeof data.loginSettings.qqCaptureEnabled === 'boolean'
+                        ? data.loginSettings.qqCaptureEnabled
+                        : DEFAULT_LOGIN_SETTINGS.qqCaptureEnabled,
+                    qqCaptureApiUrl: typeof data.loginSettings.qqCaptureApiUrl === 'string'
+                        ? data.loginSettings.qqCaptureApiUrl.trim()
+                        : DEFAULT_LOGIN_SETTINGS.qqCaptureApiUrl,
                 };
             }
 

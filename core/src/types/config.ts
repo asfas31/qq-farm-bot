@@ -188,6 +188,9 @@ export interface LoginSettings {
   qqQrLogin: boolean;
   napCatEndpoint: string;
   napCatSignature: string;
+  /** QQ 自动抓包登录开关，接口地址指向 qq-capture 网关 */
+  qqCaptureEnabled: boolean;
+  qqCaptureApiUrl: string;
 }
 
 export interface DeviceInfo {

@@ -1558,6 +1558,8 @@ const localLoginSettings = ref({
   qqQrLogin: false,
   napCatEndpoint: '',
   napCatSignature: '',
+  qqCaptureEnabled: false,
+  qqCaptureApiUrl: '',
 })
 const devicePresets = ref<any[]>([])
 const selectedPresetId = ref('')
@@ -1592,6 +1594,8 @@ function normalizeLoginSettings(source: any) {
     qqQrLogin: typeof source?.qqQrLogin === 'boolean' ? source.qqQrLogin : false,
     napCatEndpoint: typeof source?.napCatEndpoint === 'string' ? source.napCatEndpoint.trim() : '',
     napCatSignature: typeof source?.napCatSignature === 'string' ? source.napCatSignature.trim() : '',
+    qqCaptureEnabled: source?.qqCaptureEnabled === true,
+    qqCaptureApiUrl: typeof source?.qqCaptureApiUrl === 'string' ? source.qqCaptureApiUrl.trim().replace(/\/+$/, '') : '',
   }
 }
 
@@ -1737,6 +1741,10 @@ async function handleSaveLoginSettings() {
   if (localLoginSettings.value.qqQrLogin
     && (!localLoginSettings.value.napCatEndpoint.trim() || !localLoginSettings.value.napCatSignature.trim())) {
     showAlert('开启 QQ 扫码登录前，请配置 NapCat 接口地址和接口签名', 'danger')
+    return
+  }
+  if (localLoginSettings.value.qqCaptureEnabled && !localLoginSettings.value.qqCaptureApiUrl.trim()) {
+    showAlert('开启 QQ 自动抓包登录前，请填写抓包服务地址', 'danger')
     return
   }
   loginSettingsSaving.value = true
@@ -2982,6 +2990,9 @@ onBeforeUnmount(() => {
                   <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
                     <BaseSwitch v-model="localLoginSettings.qqQrLogin" label="QQ扫码登录" />
                   </div>
+                  <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+                    <BaseSwitch v-model="localLoginSettings.qqCaptureEnabled" label="QQ自动抓包登录" />
+                  </div>
                 </div>
 
                 <div
@@ -2999,6 +3010,18 @@ onBeforeUnmount(() => {
                     label="NapCat接口签名"
                     type="password"
                     placeholder="请输入 NapCat 接口签名"
+                  />
+                </div>
+
+                <div
+                  v-if="localLoginSettings.qqCaptureEnabled"
+                  class="grid grid-cols-1 mt-4 gap-3 border border-gray-200 rounded-lg bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/30"
+                >
+                  <BaseInput
+                    v-model="localLoginSettings.qqCaptureApiUrl"
+                    label="抓包服务地址"
+                    type="text"
+                    placeholder="http://127.0.0.1:8080"
                   />
                 </div>
 

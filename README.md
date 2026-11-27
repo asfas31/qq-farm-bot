@@ -330,6 +330,23 @@ QQ 扫码登录依赖外部 [qq-miniapp-auth](https://github.com/asfas31/qq-farm
 
 游戏账号属于当前实例，不带用户归属字段，也没有数量上限。通知类型和推送渠道对当前实例的所有账号生效。神秘商人的到货和自动购买提醒还需在对应账号的「自动控制」中开启。
 
+## 抓包服务
+
+`qq-capture/` 是独立的 Go 抓包网关，用于抓 QQ 农场登录 Code 与好友 GID。它以 MITM 代理方式运行，不依赖 MySQL/Redis；面板在 `http://<公网IP>:8080`，每个会话占用一个代理端口（默认 `5000-5099`）。
+
+```bash
+# 交叉编译 Linux amd64（在装有 Go 的机器上）
+cd qq-capture
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o qq-capture-linux-amd64 .
+
+# 服务器：/opt/qq-capture/qq-capture + /etc/qq-capture/qq-capture.env
+# PUBLIC_HOST=<公网IP>  HTTP_PORT=8080  PROXY_BASE_PORT=5000  CERT_DIR=/var/lib/qq-capture/certs
+sudo systemctl enable --now qq-capture
+curl -fsS http://127.0.0.1:8080/api/health
+```
+
+首次启动生成 CA 证书到 `CERT_DIR`，客户端需在手机上安装该证书；证书目录必须持久化，升级时不要覆盖。云服务器安全组与系统防火墙需放行 `8080` 和 `5000-5099`。详细部署见 `qq-capture/README-DEPLOY.md`。
+
 ## 项目结构
 
 ```text
@@ -353,6 +370,10 @@ qq-farm-bot/
 ├── docs/                  # 项目专题文档
 ├── packages/session-contract/ # 本地通信、运行路径与进程锁
 ├── tools/                 # 发布控制、配置下载、图片下载与协议分析工具
+├── qq-capture/            # Go 抓包网关（登录 Code / 好友 GID）
+│   ├── internal/          # MITM 代理、会话、抓包提取与 Web API
+│   ├── deploy/systemd/    # systemd 单元文件
+│   └── scripts/           # 打包与建库脚本
 ├── docker-compose.yml
 ├── pnpm-workspace.yaml
 └── package.json

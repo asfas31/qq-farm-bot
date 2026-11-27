@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QQ 农场 Code 获取</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: #333;
+      background: #fff;
+      padding: 24px 20px 48px;
+    }
+    .page { max-width: 480px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+    .subtitle { color: #888; margin: 0 0 20px; font-size: 13px; line-height: 1.45; }
+    section { margin-bottom: 24px; }
+    .desc { color: #666; margin: 0 0 16px; font-size: 14px; }
+    .mode-select { display: grid; gap: 10px; margin-bottom: 16px; }
+    .mode-option {
+      text-align: left;
+      cursor: pointer;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+      transition: border-color .15s, background .15s;
+    }
+    .mode-option.active { background: #eff6ff; border-color: #2563eb; }
+    .mode-title { color: #111827; display: block; font-size: 15px; font-weight: 600; }
+    .mode-desc { color: #6b7280; display: block; margin-top: 4px; font-size: 12px; }
+    .btn {
+      color: #fff;
+      cursor: pointer;
+      background: #111;
+      border: none;
+      border-radius: 8px;
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 500;
+      display: block;
+    }
+    .btn:hover { background: #333; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn.outline {
+      color: #666;
+      background: transparent;
+      border: 1px solid #ddd;
+      margin-top: 16px;
+    }
+    .btn.outline:hover { color: #333; border-color: #999; }
+    .err { color: #c00; margin-top: 8px; font-size: 13px; }
+    .row {
+      border-bottom: 1px solid #eee;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0;
+      display: flex;
+    }
+    .row .label { color: #666; flex-shrink: 0; width: 52px; font-size: 14px; }
+    .row .val { word-break: break-all; flex: 1; font-family: ui-monospace, monospace; font-size: 13px; }
+    .link {
+      color: #06c;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      flex-shrink: 0;
+      padding: 0;
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .link:hover { text-decoration: underline; }
+    .hint-dedicated {
+      color: #065f46;
+      background: #ecfdf5;
+      border: 1px solid #6ee7b7;
+      border-radius: 6px;
+      margin: 16px 0;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .hint-dedicated.wechat {
+      color: #7c2d12;
+      background: #fff7ed;
+      border-color: #fdba74;
+    }
+    .warn-banner {
+      color: #92400e;
+      background: #fffbeb;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      margin: 12px 0 0;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .platform-badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .platform-badge.qq { color: #1d4ed8; background: #dbeafe; }
+    .platform-badge.wechat { color: #b45309; background: #ffedd5; }
+    .status-line { color: #666; padding: 10px 0; font-size: 14px; margin-bottom: 8px; }
+    .dot {
+      background: #22c55e;
+      border-radius: 50%;
+      width: 6px;
+      height: 6px;
+      margin-right: 6px;
+      animation: pulse 1s ease-in-out infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .dot.dim { background: #94a3b8; animation: none; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+    .results { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+    .code-block {
+      cursor: pointer;
+      user-select: all;
+      background: #f0fdf4;
+      border: 2px solid #22c55e;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .gid-block {
+      cursor: pointer;
+      user-select: all;
+      background: #eff6ff;
+      border: 2px solid #3b82f6;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .block-label { color: #166534; margin-bottom: 8px; font-size: 12px; font-weight: 600; display: block; }
+    .gid-block .block-label { color: #1d4ed8; }
+    .code-text, .gid-text { word-break: break-all; font-family: ui-monospace, monospace; font-size: 14px; display: block; }
+    .copy-btn {
+      color: #16a34a;
+      cursor: pointer;
+      background: #fff;
+      border: 1px solid #22c55e;
+      border-radius: 6px;
+      margin-top: 10px;
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    .copy-btn.alt { color: #2563eb; border-color: #3b82f6; }
+    .copy-btn.purple { color: #7c3aed; border-color: #a78bfa; }
+    .friends-block { background: #fff; border: 2px solid #3b82f6; border-radius: 10px; padding: 12px; }
+    .friends-toolbar { padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px dashed #e2e8f0; }
+    .toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .toolbar-row:last-child { margin-bottom: 0; }
+    .block-label.blue { color: #1d4ed8; margin: 0; font-size: 12px; font-weight: 600; }
+    .view-tabs { display: flex; gap: 4px; }
+    .vtab { font-size: 12px; padding: 4px 10px; border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 6px; cursor: pointer; }
+    .vtab.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+    .copy-primary { flex: 1; padding: 10px 14px; background: #1d4ed8; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .copy-primary.purple { background: #7c3aed; }
+    .friend-list { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .friend-card { display: flex; gap: 10px; padding: 8px; border: 1px solid #f1f5f9; border-radius: 8px; align-items: center; cursor: pointer; }
+    .friend-card.has-loot { background: linear-gradient(90deg, #fef3c7, #fff 50%); border-color: #fbbf24; }
+    .friend-avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; background: #f1f5f9; object-fit: cover; }
+    .friend-avatar-fallback { display: flex; align-items: center; justify-content: center; color: #64748b; font-weight: 600; font-size: 16px; }
+    .friend-info { flex: 1; min-width: 0; }
+    .friend-name-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .friend-name { font-weight: 500; color: #0f172a; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .friend-level { font-size: 12px; color: #16a34a; background: #dcfce7; padding: 1px 6px; border-radius: 4px; flex-shrink: 0; }
+    .friend-meta { display: flex; gap: 10px; margin-top: 2px; font-size: 11px; color: #94a3b8; font-family: ui-monospace, monospace; }
+    .friend-gold { color: #ca8a04; }
+    .friend-plant { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+    .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: #f1f5f9; color: #64748b; }
+    .tag-loot { background: #fef3c7; color: #b45309; font-weight: 600; }
+    .tag-dry { background: #dbeafe; color: #1d4ed8; }
+    .tag-weed { background: #d1fae5; color: #065f46; }
+    .tag-insect { background: #fee2e2; color: #b91c1c; }
+    .empty-hint { text-align: center; padding: 20px; color: #94a3b8; font-size: 13px; }
+    .help-details {
+      background: #fafafa;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      margin-top: 20px;
+      padding: 12px 14px;
+      font-size: 13px;
+    }
+    .help-details summary {
+      cursor: pointer;
+      color: #666;
+      user-select: none;
+      font-weight: 500;
+      list-style: none;
+    }
+    .help-details summary::-webkit-details-marker { display: none; }
+    .help-inner { border-top: 1px solid #eee; margin-top: 12px; padding-top: 12px; }
+    .help-tip { color: #777; margin: 0 0 12px; line-height: 1.55; }
+    .tutorial-tabs { gap: 8px; margin-bottom: 12px; display: flex; }
+    .tutorial-tabs .tab {
+      color: #666;
+      cursor: pointer;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      flex: 1;
+      padding: 8px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .tutorial-tabs .tab.active { color: #fff; background: #111; border-color: #111; }
+    .tutorial-content { color: #555; font-size: 13px; line-height: 1.65; }
+    .tutorial-content ol { margin: 0; padding-left: 18px; }
+    .tutorial-content li { margin-bottom: 8px; }
+    footer {
+      color: #999;
+      text-align: center;
+      margin-top: 28px;
+      font-size: 12px;
+      line-height: 1.55;
+      padding: 0 4px;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>QQ 农场 · 一键获取数据</h1>
+    <p class="subtitle">装好证书、按页面数字填好手机，进农场后这里会自动出现结果</p>
+
+    <section id="startSection">
+      <p class="desc">点下面按钮开始，然后跟着本页最上面的几项做即可。</p>
+      <div class="mode-select" role="radiogroup" aria-label="选择小程序类型">
+        <button type="button" class="mode-option active" id="modeQQ" data-platform="qq">
+          <span class="mode-title">QQ 小程序</span>
+          <span class="mode-desc">抓到 code 后放行，不拦截请求</span>
+        </button>
+        <button type="button" class="mode-option" id="modeWechat" data-platform="wechat">
+          <span class="mode-title">微信小程序</span>
+          <span class="mode-desc">实验性：部分手机微信走加密通道，可能抓不到</span>
+        </button>
+      </div>
+      <button type="button" class="btn" id="startBtn">开始抓取 QQ 小程序</button>
+      <p id="startErr" class="err hidden"></p>
+    </section>
+
+    <section id="activeSection" class="hidden">
+      <div class="row">
+        <span class="label">会话</span>
+        <span class="val" id="sessionVal">—</span>
+        <button type="button" class="link" data-copy="session">复制</button>
+      </div>
+      <div class="row">
+        <span class="label">类型</span>
+        <span class="val" id="typeVal">—</span>
+        <span class="platform-badge qq" id="platformBadge">QQ</span>
+      </div>
+      <div class="row">
+        <span class="label">服务器</span>
+        <span class="val" id="hostVal">—</span>
+        <button type="button" class="link" data-copy="host">复制</button>
+      </div>
+      <div class="row">
+        <span class="label">端口</span>
+        <span class="val" id="portVal">—</span>
+        <button type="button" class="link" data-copy="port">复制</button>
+      </div>
+      <div class="row">
+        <span class="label">证书</span>
+        <a class="link" href="/api/cert" download="farm-capture-ca.crt">下载安装</a>
+      </div>
+
+      <p class="hint-dedicated" id="modeHint">你当前是 <strong>独立通道</strong>，不用点确认链接，装好证书后进农场即可。</p>
+      <p class="warn-banner hidden" id="warnBanner"></p>
+
+      <div class="status-line">
+        <span class="dot dim" id="statusDot"></span>
+        <span id="statusText">请按上表在手机里设置好，再进农场</span>
+      </div>
+
+      <div id="results" class="results hidden">
+        <div id="codeBlock" class="code-block hidden">
+          <span class="block-label">登录代码</span>
+          <span class="code-text" id="codeText"></span>
+          <button type="button" class="copy-btn" data-copy="code">复制 Code</button>
+        </div>
+        <div id="friendsBlock" class="friends-block hidden">
+          <div class="friends-toolbar">
+            <div class="toolbar-row">
+              <span class="block-label blue" id="friendsTitle">好友列表</span>
+              <div class="view-tabs">
+                <button type="button" class="vtab active" data-view="cards">卡片</button>
+                <button type="button" class="vtab" data-view="gid">GID</button>
+              </div>
+            </div>
+            <div class="toolbar-row">
+              <button type="button" class="copy-primary" data-copy="gids">复制全部 GID</button>
+              <button type="button" class="copy-primary purple" data-copy="openids">复制 <span id="openIdCount">0</span> 个 open_id</button>
+            </div>
+          </div>
+          <div id="friendCardsView" class="friend-list"></div>
+          <div id="friendGidView" class="gid-text hidden" style="padding:8px 0;font-family:ui-monospace,monospace;font-size:13px;word-break:break-all;"></div>
+        </div>
+      </div>
+
+      <button type="button" class="btn outline" id="stopBtn">结束本次</button>
+    </section>
+
+    <details class="help-details">
+      <summary>连不上或一直没有数据？</summary>
+      <div class="help-inner">
+        <p class="help-tip">请确认：已安装证书、手机填写的服务器和端口与上表完全一致、农场已重新打开。仍不行可换手机自带浏览器重试。</p>
+        <div class="tutorial-tabs">
+          <button type="button" class="tab active" data-os="android">Android</button>
+          <button type="button" class="tab" data-os="ios">iOS</button>
+        </div>
+        <div class="tutorial-content" id="tutorialAndroid">
+          <ol>
+            <li>下载证书，在设置里找到「安装证书 / CA 证书」并完成安装。</li>
+            <li>打开当前 WiFi 的 <strong>高级 / 代理</strong>，选手动，把上表的 <strong>服务器</strong> 和 <strong>端口</strong> 填进去。</li>
+            <li>打开 QQ 农场，回到本页等待；用完后在 WiFi 里 <strong>关闭代理</strong>。</li>
+          </ol>
+        </div>
+        <div class="tutorial-content hidden" id="tutorialIOS">
+          <ol>
+            <li>用 Safari 下载证书，在 <strong>设置 → 通用</strong> 里安装，并在「证书信任」里 <strong>打开信任</strong>。</li>
+            <li>当前 WiFi 点蓝色 <strong>i</strong> → 配置代理 → 手动，填写上表 <strong>服务器</strong> 和 <strong>端口</strong>。</li>
+            <li>打开 QQ 农场等本页出数据；用完在同样位置 <strong>关闭代理</strong>。</li>
+          </ol>
+        </div>
+      </div>
+    </details>
+
+    <footer>全部完成后，记得在手机 Wi‑Fi 里关掉手动代理，以免影响日常上网。</footer>
+  </div>
+
+  <script>
+    (function () {
+      var platform = 'qq';
+      var sessionId = null;
+      var ws = null;
+      var wsTimer = null;
+      var pollTimer = null;
+      var host = '';
+      var port = '';
+      var capturedCode = '';
+      var friendGids = [];
+      var friends = [];
+      var friendView = 'cards';
+      var ready = false;
+      var starting = false;
+      var SESSION_KEY = 'farm_capture_session_id';
+      var PLATFORM_KEY = 'farm_capture_platform';
+      var copiedKey = '';
+      var activeSection = document.getElementById('activeSection');
+      var startBtn = document.getElementById('startBtn');
+      var startErr = document.getElementById('startErr');
+      var stopBtn = document.getElementById('stopBtn');
+      var modeQQ = document.getElementById('modeQQ');
+      var modeWechat = document.getElementById('modeWechat');
+      var typeVal = document.getElementById('typeVal');
+      var sessionVal = document.getElementById('sessionVal');
+      var hostVal = document.getElementById('hostVal');
+      var portVal = document.getElementById('portVal');
+      var statusDot = document.getElementById('statusDot');
+      var statusText = document.getElementById('statusText');
+      var results = document.getElementById('results');
+      var codeBlock = document.getElementById('codeBlock');
+      var codeText = document.getElementById('codeText');
+      var friendsBlock = document.getElementById('friendsBlock');
+      var friendsTitle = document.getElementById('friendsTitle');
+      var friendCardsView = document.getElementById('friendCardsView');
+      var friendGidView = document.getElementById('friendGidView');
+      var openIdCount = document.getElementById('openIdCount');
+      var modeHint = document.getElementById('modeHint');
+      var warnBanner = document.getElementById('warnBanner');
+      var platformBadge = document.getElementById('platformBadge');
+      var startSection = document.getElementById('startSection');
+
+      function updatePlatformUI() {
+        if (platformBadge) {
+          platformBadge.textContent = platform === 'wechat' ? '微信' : 'QQ';
+          platformBadge.className = 'platform-badge ' + (platform === 'wechat' ? 'wechat' : 'qq');
+        }
+        if (modeHint) {
+          modeHint.classList.toggle('wechat', platform === 'wechat');
+          modeHint.innerHTML = platform === 'wechat'
+            ? '微信农场游戏连接常走 <strong>mmtls 加密通道</strong>，WiFi 代理可能<strong>看不到</strong>登录 Code，也就无法拦截。若一直进得了农场却没有 Code，请改用 <strong>QQ 小程序</strong> 模式。'
+            : 'QQ 模式已验证可用：抓到 code 后放行，手机可正常进游戏。请用 <strong>QQ</strong> 打开农场。';
+        }
+      }
+
+      function showWarning(text) {
+        if (!warnBanner || !text) return;
+        warnBanner.textContent = text;
+        warnBanner.classList.remove('hidden');
+      }
+
+      function clearWarning() {
+        if (!warnBanner) return;
+        warnBanner.textContent = '';
+        warnBanner.classList.add('hidden');
+      }
+
+      function platformLabel() {
+        return platform === 'wechat' ? '微信小程序' : 'QQ 小程序';
+      }
+
+      function typeLabel() {
+        return platform === 'wechat' ? '微信小程序（实验性）' : 'QQ 小程序（推荐）';
+      }
+
+      function updateStartButton() {
+        startBtn.textContent = '开始抓取 ' + platformLabel();
+      }
+
+      function setPlatform(next) {
+        if (platform === next) return;
+        platform = next;
+        modeQQ.classList.toggle('active', platform === 'qq');
+        modeWechat.classList.toggle('active', platform === 'wechat');
+        updateStartButton();
+        updatePlatformUI();
+        try {
+          sessionStorage.setItem(PLATFORM_KEY, platform);
+          sessionStorage.removeItem(SESSION_KEY);
+        } catch (e) {}
+      }
+
+      function setStatus(text, isReady) {
+        statusText.textContent = text;
+        statusDot.classList.toggle('dim', !isReady);
+        ready = !!isReady;
+      }
+
+      function showResults() {
+        if (capturedCode || friendGids.length || friends.length) {
+          results.classList.remove('hidden');
+        }
+      }
+
+      function updateCode(code) {
+        if (!code) return;
+        capturedCode = code;
+        codeText.textContent = code;
+        codeBlock.classList.remove('hidden');
+        showResults();
+      }
+
+      function formatGold(value) {
+        var n = Number(value) || 0;
+        if (n >= 100000000) return (n / 100000000).toFixed(2) + '亿';
+        if (n >= 10000) return (n / 10000).toFixed(1) + '万';
+        return String(n);
+      }
+
+      function friendInitial(name) {
+        var text = String(name || '').trim();
+        if (!text) return '?';
+        return Array.from(text)[0];
+      }
+
+      function countOpenIds(list) {
+        var count = 0;
+        list.forEach(function (f) {
+          if (f.open_id && String(f.open_id).length >= 16) count++;
+        });
+        return count;
+      }
+
+      function renderFriends() {
+        if (!friends.length) {
+          friendsBlock.classList.add('hidden');
+          return;
+        }
+        friendsBlock.classList.remove('hidden');
+        friendsTitle.textContent = '好友列表 ' + friends.length + ' 人';
+        openIdCount.textContent = String(countOpenIds(friends));
+        friendGids = friends.map(function (f) { return String(f.gid); });
+        friendGidView.textContent = friendGids.join(', ');
+
+        friendCardsView.innerHTML = friends.map(function (f) {
+          var loot = f.plant && Number(f.plant.steal_plant_num) > 0;
+          var tags = [];
+          if (loot) tags.push('<span class="tag tag-loot">可偷 ' + f.plant.steal_plant_num + '</span>');
+          if (f.plant && Number(f.plant.dry_num) > 0) tags.push('<span class="tag tag-dry">缺水 ' + f.plant.dry_num + '</span>');
+          if (f.plant && Number(f.plant.weed_num) > 0) tags.push('<span class="tag tag-weed">长草 ' + f.plant.weed_num + '</span>');
+          if (f.plant && Number(f.plant.insect_num) > 0) tags.push('<span class="tag tag-insect">虫害 ' + f.plant.insect_num + '</span>');
+          var avatar = f.avatar_url
+            ? '<img class="friend-avatar" src="' + f.avatar_url + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><div class="friend-avatar friend-avatar-fallback" style="display:none">' + friendInitial(f.name) + '</div>'
+            : '<div class="friend-avatar friend-avatar-fallback">' + friendInitial(f.name) + '</div>';
+          return '<div class="friend-card' + (loot ? ' has-loot' : '') + '" data-gid="' + f.gid + '" title="点击复制 GID">' +
+            avatar +
+            '<div class="friend-info">' +
+              '<div class="friend-name-row">' +
+                '<span class="friend-name">' + (f.name || '无昵称') + '</span>' +
+                (f.level ? '<span class="friend-level">Lv.' + f.level + '</span>' : '') +
+              '</div>' +
+              '<div class="friend-meta">' +
+                '<span>' + f.gid + '</span>' +
+                (f.gold ? '<span class="friend-gold">' + formatGold(f.gold) + ' 金</span>' : '') +
+              '</div>' +
+              (tags.length ? '<div class="friend-plant">' + tags.join('') + '</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        friendCardsView.classList.toggle('hidden', friendView !== 'cards');
+        friendGidView.classList.toggle('hidden', friendView !== 'gid');
+        showResults();
+      }
+
+      function mergeFriends(list) {
+        var map = {};
+        friends.forEach(function (f) { map[String(f.gid)] = f; });
+        list.forEach(function (incoming) {
+          if (!incoming || !incoming.gid) return;
+          var key = String(incoming.gid);
+          var prev = map[key] || {};
+          map[key] = {
+            gid: incoming.gid,
+            open_id: incoming.open_id || prev.open_id || '',
+            name: incoming.name || prev.name || '',
+            avatar_url: incoming.avatar_url || prev.avatar_url || '',
+            level: incoming.level || prev.level || 0,
+            gold: incoming.gold || prev.gold || 0,
+            plant: incoming.plant || prev.plant || null
+          };
+        });
+        friends = Object.keys(map).map(function (k) { return map[k]; });
+        renderFriends();
+      }
+
+      function updateGids(gids) {
+        if (!gids || !gids.length) return;
+        mergeFriends(gids.map(function (gid) { return { gid: gid }; }));
+      }
+
+      function updateFriends(list) {
+        if (!list || !list.length) return;
+        mergeFriends(list);
+      }
+
+      function showActiveView() {
+        startSection.classList.add('hidden');
+        activeSection.classList.remove('hidden');
+        typeVal.textContent = typeLabel();
+        updatePlatformUI();
+        sessionVal.textContent = sessionId || '—';
+        hostVal.textContent = host || '—';
+        portVal.textContent = port || '—';
+        setStatus(platform === 'wechat'
+          ? '请设置代理后用微信打开农场（抓到后不会进游戏）'
+          : '请按上表在手机里设置好，再进农场', false);
+      }
+
+      function applySession(session) {
+        if (!session) return;
+        if (session.code) updateCode(session.code);
+        if (session.friends && session.friends.length) updateFriends(session.friends);
+        else if (session.friendGids && session.friendGids.length) updateGids(session.friendGids);
+        if (session.status === 'stopped') {
+          setStatus('抓取已完成，代理端口已释放', true);
+        } else if (session.code || session.status === 'ready' || session.status === 'captured') {
+          setStatus('可以进农场了', true);
+        } else if (session.status === 'waiting') {
+          setStatus('等待手机连接代理...', false);
+        }
+      }
+
+      function stopPolling() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      function startPolling() {
+        stopPolling();
+        async function pollOnce() {
+          if (!sessionId) return;
+          var session = await verifySession(sessionId);
+          if (!session) {
+            stopPolling();
+            return;
+          }
+          applySession(session);
+          if (session.status === 'stopped') {
+            stopPolling();
+            return;
+          }
+        }
+        pollOnce();
+        pollTimer = setInterval(pollOnce, 2000);
+      }
+
+      function showStartView() {
+        stopPolling();
+        if (wsTimer) {
+          clearTimeout(wsTimer);
+          wsTimer = null;
+        }
+        if (ws) {
+          try { ws.close(); } catch (e) {}
+          ws = null;
+        }
+        activeSection.classList.add('hidden');
+        startSection.classList.remove('hidden');
+        results.classList.add('hidden');
+        codeBlock.classList.add('hidden');
+        friendsBlock.classList.add('hidden');
+        capturedCode = '';
+        friendGids = [];
+        friends = [];
+        ready = false;
+        clearWarning();
+        host = '';
+        port = '';
+        sessionId = null;
+      }
+
+      function safeCopy(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          return navigator.clipboard.writeText(text);
+        }
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return Promise.resolve();
+      }
+
+      function flashCopy(btn, ok) {
+        var old = btn.textContent;
+        btn.textContent = ok ? '已复制' : '请长按选择复制';
+        setTimeout(function () { btn.textContent = old; }, 1500);
+      }
+
+      async function startCapture() {
+        if (starting) return;
+        starting = true;
+        startBtn.disabled = true;
+        startErr.classList.add('hidden');
+        startErr.textContent = '';
+
+        try {
+          var res = await fetch('/api/session/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform: platform })
+          });
+          var data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || '启动失败');
+          }
+          sessionId = data.session.id;
+          platform = data.session.platform || platform;
+          host = data.session.host;
+          port = String(data.session.port);
+          try {
+            sessionStorage.setItem(SESSION_KEY, sessionId);
+            sessionStorage.setItem(PLATFORM_KEY, platform);
+          } catch (e) {}
+          showActiveView();
+          startPolling();
+          connectWS();
+        } catch (err) {
+          startErr.textContent = err.message || '启动失败';
+          startErr.classList.remove('hidden');
+        } finally {
+          starting = false;
+          startBtn.disabled = false;
+        }
+      }
+
+      async function verifySession(id) {
+        try {
+          var res = await fetch('/api/session/' + id);
+          if (!res.ok) return null;
+          var data = await res.json();
+          return data.session || null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      async function restoreSession(id) {
+        var session = await verifySession(id);
+        if (!session) {
+          try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+          return;
+        }
+        sessionId = session.id;
+        platform = session.platform || 'qq';
+        host = session.host;
+        port = String(session.port);
+        setPlatform(platform);
+        showActiveView();
+        applySession(session);
+        if (session.status !== 'stopped') {
+          startPolling();
+          connectWS();
+        }
+      }
+
+      async function connectWS() {
+        if (!sessionId) return;
+        var session = await verifySession(sessionId);
+        if (!session) {
+          try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+          stopPolling();
+          showStartView();
+          startErr.textContent = '会话已失效，请重新开始';
+          startErr.classList.remove('hidden');
+          return;
+        }
+
+        applySession(session);
+
+        if (ws) {
+          try { ws.close(); } catch (e) {}
+          ws = null;
+        }
+
+        var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(proto + '://' + location.host + '/api/ws/' + sessionId);
+
+        ws.onmessage = function (ev) {
+          try {
+            var msg = JSON.parse(ev.data);
+            if (msg.type === 'warning' && msg.message) {
+              showWarning(msg.message);
+              setStatus(msg.message, false);
+            }
+            if (msg.code) {
+              updateCode(msg.code);
+              setStatus('可以进农场了', true);
+            }
+            if (msg.type === 'captured' && msg.code) {
+              updateCode(msg.code);
+              setStatus('可以进农场了', true);
+            }
+            if (msg.gids && msg.gids.length) {
+              updateGids(msg.gids);
+            }
+            if (msg.friends && msg.friends.length) {
+              updateFriends(msg.friends);
+            }
+            if (msg.status === 'ready') {
+              setStatus('可以进农场了', true);
+            } else if (msg.status === 'captured') {
+              setStatus('可以进农场了', true);
+            } else if (msg.status === 'stopped') {
+              stopPolling();
+              if (wsTimer) {
+                clearTimeout(wsTimer);
+                wsTimer = null;
+              }
+              setStatus('抓取已完成，代理端口已释放', true);
+              if (ws) {
+                var completedWS = ws;
+                ws = null;
+                try { completedWS.close(); } catch (e) {}
+              }
+              return;
+            } else if (msg.message && !capturedCode) {
+              setStatus(msg.message, ready);
+            }
+          } catch (e) {}
+        };
+
+        ws.onclose = function () {
+          if (!ws || !sessionId) return;
+          wsTimer = setTimeout(function () {
+            if (sessionId) connectWS();
+          }, 2000);
+        };
+      }
+
+      async function stopCapture() {
+        if (!sessionId) return;
+        stopPolling();
+        try {
+          await fetch('/api/session/' + sessionId + '/stop', { method: 'POST' });
+        } catch (e) {}
+        if (wsTimer) {
+          clearTimeout(wsTimer);
+          wsTimer = null;
+        }
+        if (ws) {
+          try { ws.close(); } catch (e) {}
+          ws = null;
+        }
+        try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+        showStartView();
+      }
+
+      modeQQ.addEventListener('click', function () { setPlatform('qq'); });
+      modeWechat.addEventListener('click', function () { setPlatform('wechat'); });
+      startBtn.addEventListener('click', startCapture);
+      stopBtn.addEventListener('click', stopCapture);
+
+      document.querySelectorAll('[data-copy]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var key = btn.getAttribute('data-copy');
+          var val;
+          if (key === 'host') val = host;
+          else if (key === 'port') val = port;
+          else if (key === 'session') val = sessionId;
+          else if (key === 'code') val = capturedCode;
+          else if (key === 'openids') {
+            val = friends.map(function (f) { return f.open_id; }).filter(function (id) { return id && String(id).length >= 16; }).join('\n');
+          } else {
+            val = friendGids.join(', ');
+          }
+          if (!val) return;
+          safeCopy(val).then(function () {
+            flashCopy(btn, true);
+          }).catch(function () {
+            flashCopy(btn, false);
+            prompt('请手动复制:', val);
+          });
+        });
+      });
+
+      document.querySelectorAll('.vtab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          friendView = tab.getAttribute('data-view') || 'cards';
+          document.querySelectorAll('.vtab').forEach(function (t) {
+            t.classList.toggle('active', t === tab);
+          });
+          renderFriends();
+        });
+      });
+
+      friendCardsView.addEventListener('click', function (ev) {
+        var card = ev.target.closest('.friend-card');
+        if (!card) return;
+        var gid = card.getAttribute('data-gid');
+        if (!gid) return;
+        safeCopy(gid).then(function () {
+          card.style.background = '#dcfce7';
+          setTimeout(function () { card.style.background = ''; }, 800);
+        });
+      });
+
+      document.querySelectorAll('.tutorial-tabs .tab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          document.querySelectorAll('.tutorial-tabs .tab').forEach(function (t) {
+            t.classList.toggle('active', t === tab);
+          });
+          var os = tab.getAttribute('data-os');
+          document.getElementById('tutorialAndroid').classList.toggle('hidden', os !== 'android');
+          document.getElementById('tutorialIOS').classList.toggle('hidden', os !== 'ios');
+        });
+      });
+
+      updateStartButton();
+      updatePlatformUI();
+
+      try {
+        var savedPlatform = sessionStorage.getItem(PLATFORM_KEY);
+        if (savedPlatform === 'wechat' || savedPlatform === 'qq') {
+          setPlatform(savedPlatform);
+        }
+        var saved = sessionStorage.getItem(SESSION_KEY);
+        if (saved) restoreSession(saved);
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>

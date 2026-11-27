@@ -1,0 +1,17 @@
+services:
+  qq-capture:
+    build:
+      context: .
+      dockerfile: Dockerfile.release
+    image: qq-capture:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+      - "${PROXY_BASE_PORT:-5000}-${PROXY_LAST_PORT:-5099}:5000-5099"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data/certs:/var/lib/qq-capture/certs
+    environment:
+      CERT_DIR: /var/lib/qq-capture/certs

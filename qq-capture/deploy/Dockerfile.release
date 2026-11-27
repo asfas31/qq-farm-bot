@@ -1,0 +1,17 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata wget && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone && \
+    apk del tzdata
+
+WORKDIR /app
+COPY qq-capture /app/qq-capture
+COPY config.yaml /app/config.yaml
+RUN mkdir -p /var/lib/qq-capture/certs && chmod +x /app/qq-capture
+
+EXPOSE 8080 5000-5099
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD wget -q -O /dev/null http://localhost:8080/api/health || exit 1
+
+CMD ["/app/qq-capture"]

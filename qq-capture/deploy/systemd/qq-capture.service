@@ -1,0 +1,21 @@
+[Unit]
+Description=QQ Capture Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=qqcapture
+Group=qqcapture
+WorkingDirectory=/opt/qq-capture
+EnvironmentFile=/etc/qq-capture/qq-capture.env
+ExecStart=/opt/qq-capture/qq-capture
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/var/lib/qq-capture
+
+[Install]
+WantedBy=multi-user.target

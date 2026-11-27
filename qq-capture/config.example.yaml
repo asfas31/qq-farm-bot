@@ -1,0 +1,8 @@
+server:
+  http_port: 8080
+  proxy_base_port: 5000
+  # Set this to the LAN or public address reachable by clients.
+  public_host: ""
+
+# Keep this directory outside versioned release folders in production.
+cert_dir: ./certs

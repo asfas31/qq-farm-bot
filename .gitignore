@@ -64,3 +64,9 @@ protocol-captures/
 /releases/
 /packages/*/dist/
 .turbo/
+
+# qq-capture 本地运行产物（证书、真实配置与编译出的二进制）
+qq-capture/certs/
+qq-capture/config.yaml
+qq-capture/qq-capture
+qq-capture/qq-capture-linux-*

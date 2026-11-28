@@ -45,12 +45,12 @@ const genDays = ref(30)
 const genCount = ref(5)
 const genMaxUses = ref(1)
 const genNote = ref('')
-const genExpanded = ref(false)
 const generating = ref(false)
 const generated = ref<CardKeyItem[]>([])
 
 const keyword = ref('')
 const statusFilter = ref('')
+const listExpanded = ref(false)
 const copiedAll = ref(false)
 
 const newUsername = ref('')
@@ -456,7 +456,6 @@ async function generateKeys() {
     })
     if (res.data.ok) {
       generated.value = res.data.data
-      genExpanded.value = true
       toast.success(`已生成 ${generated.value.length} 张卡密`)
       await refreshAll()
     }
@@ -797,16 +796,8 @@ onBeforeUnmount(() => {
           <span class="i-carbon-add-alt" />
           生成卡密
         </h2>
-        <div class="panel-tools">
-          <span v-if="!genExpanded" class="gen-summary">
-            {{ genDays }} 天 · {{ genCount }} 张 · 每张 {{ genMaxUses }} 次{{ genNote ? ` · ${genNote}` : '' }}
-          </span>
-          <BaseButton size="sm" variant="outline" @click="genExpanded = !genExpanded">
-            {{ genExpanded ? '收起' : '展开' }}
-          </BaseButton>
-        </div>
       </div>
-      <div v-if="genExpanded" class="gen-grid">
+      <div class="gen-grid">
         <label class="field">
           <span class="field-label">时长（天）</span>
           <BaseInput v-model.number="genDays" type="number" min="1" max="3650" />
@@ -842,7 +833,9 @@ onBeforeUnmount(() => {
 
       <div v-if="revealedPassword" class="generated-box password-box">
         <span>{{ revealedPassword }}</span>
-        <button class="link-btn" type="button" @click="revealedPassword = ''">关闭</button>
+        <button class="link-btn" type="button" @click="revealedPassword = ''">
+          关闭
+        </button>
       </div>
     </section>
 
@@ -892,7 +885,9 @@ onBeforeUnmount(() => {
           <BaseInput v-model="freeClaim.note" type="text" placeholder="免费领取" />
         </label>
         <div class="field field-action">
-          <BaseButton variant="primary" :loading="freeClaimSaving" @click="saveFreeClaim">保存</BaseButton>
+          <BaseButton variant="primary" :loading="freeClaimSaving" @click="saveFreeClaim">
+            保存
+          </BaseButton>
         </div>
       </div>
 
@@ -913,14 +908,24 @@ onBeforeUnmount(() => {
           </thead>
           <tbody>
             <tr v-for="(item, index) in claimRecords" :key="index">
-              <td class="muted-cell">{{ item.ip }}</td>
-              <td class="muted-cell">{{ item.identity || '-' }}</td>
-              <td class="muted-cell">{{ formatTime(item.at) }}</td>
-              <td class="code-cell">{{ item.code }}</td>
+              <td class="muted-cell">
+                {{ item.ip }}
+              </td>
+              <td class="muted-cell">
+                {{ item.identity || '-' }}
+              </td>
+              <td class="muted-cell">
+                {{ formatTime(item.at) }}
+              </td>
+              <td class="code-cell">
+                {{ item.code }}
+              </td>
               <td>{{ item.days }} 天</td>
             </tr>
             <tr v-if="!claimRecords.length">
-              <td colspan="5" class="empty-cell">暂无领取记录</td>
+              <td colspan="5" class="empty-cell">
+                暂无领取记录
+              </td>
             </tr>
           </tbody>
         </table>
@@ -935,105 +940,148 @@ onBeforeUnmount(() => {
           <span class="count-badge">{{ filteredKeys.length }}</span>
         </h2>
         <div class="panel-tools">
-          <select v-model="statusFilter" class="select">
-            <option value="">全部状态</option>
-            <option value="active">可用</option>
-            <option value="used">已用完</option>
-            <option value="disabled">已禁用</option>
-            <option value="expired">已过期</option>
-          </select>
-          <BaseInput v-model="keyword" type="text" placeholder="搜卡密 / 备注 / 用户" class="search-input" />
+          <template v-if="listExpanded">
+            <select v-model="statusFilter" class="select">
+              <option value="">
+                全部状态
+              </option>
+              <option value="active">
+                可用
+              </option>
+              <option value="used">
+                已用完
+              </option>
+              <option value="disabled">
+                已禁用
+              </option>
+              <option value="expired">
+                已过期
+              </option>
+            </select>
+            <BaseInput v-model="keyword" type="text" placeholder="搜卡密 / 备注 / 用户" class="search-input" />
+          </template>
+          <BaseButton size="sm" variant="outline" @click="listExpanded = !listExpanded">
+            {{ listExpanded ? '收起列表' : '展开列表' }}
+          </BaseButton>
         </div>
       </div>
 
-      <div v-if="selectedIds.size" class="bulk-bar">
-        <div class="bulk-info">
-          <strong>已选 {{ selectedIds.size }} 张</strong>
-          <span class="bulk-sub">
-            可用 {{ selectedStats.active }} · 已禁用 {{ selectedStats.disabled }} · 已用完/过期 {{ selectedStats.dead }} · 合计 {{ selectedStats.daysTotal }} 天
-          </span>
+      <template v-if="listExpanded">
+        <div v-if="selectedIds.size" class="bulk-bar">
+          <div class="bulk-info">
+            <strong>已选 {{ selectedIds.size }} 张</strong>
+            <span class="bulk-sub">
+              可用 {{ selectedStats.active }} · 已禁用 {{ selectedStats.disabled }} · 已用完/过期 {{ selectedStats.dead }} · 合计 {{ selectedStats.daysTotal }} 天
+            </span>
+          </div>
+          <div class="bulk-actions">
+            <button class="bulk-btn" type="button" :disabled="bulkBusy" @click="batchAction('enable')">
+              批量启用
+            </button>
+            <button class="bulk-btn" type="button" :disabled="bulkBusy" @click="batchAction('disable')">
+              批量禁用
+            </button>
+            <span class="bulk-note-group">
+              <input v-model="bulkNote" class="bulk-note-input" type="text" maxlength="120" placeholder="统一备注，留空则清空">
+              <button class="bulk-btn" type="button" :disabled="bulkBusy" @click="applyBulkNote">应用备注</button>
+            </span>
+            <button class="bulk-btn" type="button" @click="copySelected">
+              复制卡密
+            </button>
+            <button class="bulk-btn" type="button" @click="exportSelected">
+              导出 CSV
+            </button>
+            <button class="bulk-btn" type="button" @click="invertSelection">
+              反选
+            </button>
+            <button class="bulk-btn danger" type="button" :disabled="bulkBusy" @click="batchAction('delete')">
+              批量删除
+            </button>
+            <button class="bulk-btn ghost" type="button" @click="clearSelection">
+              取消选择
+            </button>
+          </div>
         </div>
-        <div class="bulk-actions">
-          <button class="bulk-btn" type="button" :disabled="bulkBusy" @click="batchAction('enable')">批量启用</button>
-          <button class="bulk-btn" type="button" :disabled="bulkBusy" @click="batchAction('disable')">批量禁用</button>
-          <span class="bulk-note-group">
-            <input v-model="bulkNote" class="bulk-note-input" type="text" maxlength="120" placeholder="统一备注，留空则清空">
-            <button class="bulk-btn" type="button" :disabled="bulkBusy" @click="applyBulkNote">应用备注</button>
-          </span>
-          <button class="bulk-btn" type="button" @click="copySelected">复制卡密</button>
-          <button class="bulk-btn" type="button" @click="exportSelected">导出 CSV</button>
-          <button class="bulk-btn" type="button" @click="invertSelection">反选</button>
-          <button class="bulk-btn danger" type="button" :disabled="bulkBusy" @click="batchAction('delete')">批量删除</button>
-          <button class="bulk-btn ghost" type="button" @click="clearSelection">取消选择</button>
-        </div>
-      </div>
 
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th class="col-select">
-                <button
-                  class="sel-box"
-                  :class="{ 'is-on': allFilteredSelected, 'is-part': someFilteredSelected }"
-                  type="button"
-                  :title="allFilteredSelected ? '取消全选（当前筛选结果）' : '全选当前筛选结果'"
-                  @click="toggleSelectAllFiltered"
-                >
-                  {{ allFilteredSelected ? '✓' : (someFilteredSelected ? '–' : '') }}
-                </button>
-              </th>
-              <th>卡密</th>
-              <th>时长</th>
-              <th>用量</th>
-              <th>状态</th>
-              <th>备注</th>
-              <th>兑换用户</th>
-              <th>创建时间</th>
-              <th class="col-actions">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="key in filteredKeys" :key="key.id" :class="{ 'is-selected': isSelected(key.id) }">
-              <td class="col-select">
-                <button
-                  class="sel-box"
-                  :class="{ 'is-on': isSelected(key.id) }"
-                  type="button"
-                  :title="isSelected(key.id) ? '取消选择' : '选择'"
-                  @click="toggleSelect(key)"
-                >
-                  {{ isSelected(key.id) ? '✓' : '' }}
-                </button>
-              </td>
-              <td>
-                <button class="code-cell" type="button" title="点击复制" @click="copyText(key.code).then(ok => ok && toast.success('已复制'))">
-                  {{ key.code }}
-                  <span class="i-carbon-copy" />
-                </button>
-              </td>
-              <td>{{ key.days }} 天</td>
-              <td>{{ key.uses }} / {{ key.maxUses }}</td>
-              <td><span class="status-pill" :class="`is-${key.status}`">{{ statusText[key.status] || key.status }}</span></td>
-              <td class="muted-cell">{{ key.note || '-' }}</td>
-              <td class="muted-cell">
-                {{ key.usedBy.length ? key.usedBy.map(u => u.username).join('、') : '-' }}
-              </td>
-              <td class="muted-cell">{{ formatTime(key.createdAt) }}</td>
-              <td class="col-actions">
-                <button class="row-btn" type="button" @click="openDetail(key)">详情</button>
-                <button class="row-btn" type="button" @click="toggleKey(key)">
-                  {{ key.status === 'disabled' ? '启用' : '禁用' }}
-                </button>
-                <button class="row-btn danger" type="button" @click="removeKey(key)">删除</button>
-              </td>
-            </tr>
-            <tr v-if="!filteredKeys.length">
-              <td colspan="9" class="empty-cell">{{ loadingKeys ? '加载中...' : '暂无卡密' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-select">
+                  <button
+                    class="sel-box"
+                    :class="{ 'is-on': allFilteredSelected, 'is-part': someFilteredSelected }"
+                    type="button"
+                    :title="allFilteredSelected ? '取消全选（当前筛选结果）' : '全选当前筛选结果'"
+                    @click="toggleSelectAllFiltered"
+                  >
+                    {{ allFilteredSelected ? '✓' : (someFilteredSelected ? '–' : '') }}
+                  </button>
+                </th>
+                <th>卡密</th>
+                <th>时长</th>
+                <th>用量</th>
+                <th>状态</th>
+                <th>备注</th>
+                <th>兑换用户</th>
+                <th>创建时间</th>
+                <th class="col-actions">
+                  操作
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="key in filteredKeys" :key="key.id" :class="{ 'is-selected': isSelected(key.id) }">
+                <td class="col-select">
+                  <button
+                    class="sel-box"
+                    :class="{ 'is-on': isSelected(key.id) }"
+                    type="button"
+                    :title="isSelected(key.id) ? '取消选择' : '选择'"
+                    @click="toggleSelect(key)"
+                  >
+                    {{ isSelected(key.id) ? '✓' : '' }}
+                  </button>
+                </td>
+                <td>
+                  <button class="code-cell" type="button" title="点击复制" @click="copyText(key.code).then(ok => ok && toast.success('已复制'))">
+                    {{ key.code }}
+                    <span class="i-carbon-copy" />
+                  </button>
+                </td>
+                <td>{{ key.days }} 天</td>
+                <td>{{ key.uses }} / {{ key.maxUses }}</td>
+                <td><span class="status-pill" :class="`is-${key.status}`">{{ statusText[key.status] || key.status }}</span></td>
+                <td class="muted-cell">
+                  {{ key.note || '-' }}
+                </td>
+                <td class="muted-cell">
+                  {{ key.usedBy.length ? key.usedBy.map(u => u.username).join('、') : '-' }}
+                </td>
+                <td class="muted-cell">
+                  {{ formatTime(key.createdAt) }}
+                </td>
+                <td class="col-actions">
+                  <button class="row-btn" type="button" @click="openDetail(key)">
+                    详情
+                  </button>
+                  <button class="row-btn" type="button" @click="toggleKey(key)">
+                    {{ key.status === 'disabled' ? '启用' : '禁用' }}
+                  </button>
+                  <button class="row-btn danger" type="button" @click="removeKey(key)">
+                    删除
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!filteredKeys.length">
+                <td colspan="9" class="empty-cell">
+                  {{ loadingKeys ? '加载中...' : '暂无卡密' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
     </section>
 
     <section class="panel">
@@ -1049,7 +1097,9 @@ onBeforeUnmount(() => {
         <BaseInput v-model="newUsername" type="text" placeholder="用户名" class="create-input" />
         <BaseInput v-model="newPassword" type="password" placeholder="初始密码（字母+数字，≥6位）" class="create-input" />
         <BaseInput v-model.number="newDays" type="number" min="1" max="3650" class="create-days" />
-        <BaseButton variant="outline" :loading="creatingUser" @click="createUser">直接建号</BaseButton>
+        <BaseButton variant="outline" :loading="creatingUser" @click="createUser">
+          直接建号
+        </BaseButton>
       </div>
 
       <div class="table-wrap">
@@ -1063,14 +1113,20 @@ onBeforeUnmount(() => {
               <th>账号数</th>
               <th>状态</th>
               <th>最近登录</th>
-              <th class="col-actions">操作</th>
+              <th class="col-actions">
+                操作
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="user in users" :key="user.id">
-              <td class="strong-cell">{{ user.username }}</td>
+              <td class="strong-cell">
+                {{ user.username }}
+              </td>
               <td>普通用户</td>
-              <td class="muted-cell">{{ formatTime(user.expiresAt) }}</td>
+              <td class="muted-cell">
+                {{ formatTime(user.expiresAt) }}
+              </td>
               <td>{{ daysLeft(user.expiresAt) }}</td>
               <td>{{ user.accountCount }}</td>
               <td>
@@ -1078,19 +1134,31 @@ onBeforeUnmount(() => {
                   {{ user.enabled ? '正常' : '已禁用' }}
                 </span>
               </td>
-              <td class="muted-cell">{{ user.lastLoginAt ? formatTime(user.lastLoginAt) : '-' }}</td>
+              <td class="muted-cell">
+                {{ user.lastLoginAt ? formatTime(user.lastLoginAt) : '-' }}
+              </td>
               <td class="col-actions">
-                <button class="row-btn" type="button" @click="extendUser(user, 30)">+30天</button>
-                <button class="row-btn" type="button" @click="extendUser(user, 90)">+90天</button>
-                <button class="row-btn" type="button" @click="resetPassword(user)">重置密码</button>
+                <button class="row-btn" type="button" @click="extendUser(user, 30)">
+                  +30天
+                </button>
+                <button class="row-btn" type="button" @click="extendUser(user, 90)">
+                  +90天
+                </button>
+                <button class="row-btn" type="button" @click="resetPassword(user)">
+                  重置密码
+                </button>
                 <button class="row-btn" type="button" @click="toggleUser(user)">
                   {{ user.enabled ? '禁用' : '启用' }}
                 </button>
-                <button class="row-btn danger" type="button" @click="removeUser(user)">删除</button>
+                <button class="row-btn danger" type="button" @click="removeUser(user)">
+                  删除
+                </button>
               </td>
             </tr>
             <tr v-if="!users.length">
-              <td colspan="8" class="empty-cell">{{ loadingUsers ? '加载中...' : '暂无用户，先在左侧生成卡密' }}</td>
+              <td colspan="8" class="empty-cell">
+                {{ loadingUsers ? '加载中...' : '暂无用户，先在左侧生成卡密' }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1126,7 +1194,9 @@ onBeforeUnmount(() => {
                 >
                   ›
                 </button>
-                <button class="ck-drawer-close" type="button" aria-label="关闭" @click="closeDetail">✕</button>
+                <button class="ck-drawer-close" type="button" aria-label="关闭" @click="closeDetail">
+                  ✕
+                </button>
               </div>
             </header>
 
@@ -1164,7 +1234,9 @@ onBeforeUnmount(() => {
               </dl>
 
               <section class="ck-section">
-                <h3 class="ck-section-title">备注</h3>
+                <h3 class="ck-section-title">
+                  备注
+                </h3>
                 <textarea
                   v-model="detailNote"
                   class="ck-note"
@@ -1174,7 +1246,9 @@ onBeforeUnmount(() => {
                 />
                 <div class="ck-note-foot">
                   <span>{{ detailNote.length }}/120</span>
-                  <BaseButton size="sm" variant="outline" :loading="detailBusy" @click="saveDetailNote">保存备注</BaseButton>
+                  <BaseButton size="sm" variant="outline" :loading="detailBusy" @click="saveDetailNote">
+                    保存备注
+                  </BaseButton>
                 </div>
               </section>
 
@@ -1189,17 +1263,25 @@ onBeforeUnmount(() => {
                     <span class="ck-user-time">{{ formatTime(item.at) }}</span>
                   </li>
                 </ul>
-                <p v-else class="ck-empty">暂无兑换记录</p>
+                <p v-else class="ck-empty">
+                  暂无兑换记录
+                </p>
               </section>
             </div>
 
             <footer class="ck-drawer-foot">
-              <BaseButton size="sm" variant="outline" @click="copyDetailCode">复制卡密</BaseButton>
-              <BaseButton v-if="detailKey.usedBy.length" size="sm" variant="outline" @click="copyDetailUsers">复制用户</BaseButton>
+              <BaseButton size="sm" variant="outline" @click="copyDetailCode">
+                复制卡密
+              </BaseButton>
+              <BaseButton v-if="detailKey.usedBy.length" size="sm" variant="outline" @click="copyDetailUsers">
+                复制用户
+              </BaseButton>
               <BaseButton size="sm" variant="secondary" @click="toggleDetailStatus">
                 {{ detailKey.status === 'disabled' ? '启用' : '禁用' }}
               </BaseButton>
-              <BaseButton size="sm" variant="danger" @click="removeDetailKey">删除</BaseButton>
+              <BaseButton size="sm" variant="danger" @click="removeDetailKey">
+                删除
+              </BaseButton>
             </footer>
           </aside>
         </div>
@@ -1336,11 +1418,6 @@ onBeforeUnmount(() => {
 
 .search-input {
   width: 220px;
-}
-
-.gen-summary {
-  color: var(--ui-muted);
-  font-size: 12px;
 }
 
 .gen-grid {

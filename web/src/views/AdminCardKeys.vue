@@ -45,6 +45,7 @@ const genDays = ref(30)
 const genCount = ref(5)
 const genMaxUses = ref(1)
 const genNote = ref('')
+const genExpanded = ref(false)
 const generating = ref(false)
 const generated = ref<CardKeyItem[]>([])
 
@@ -455,6 +456,7 @@ async function generateKeys() {
     })
     if (res.data.ok) {
       generated.value = res.data.data
+      genExpanded.value = true
       toast.success(`已生成 ${generated.value.length} 张卡密`)
       await refreshAll()
     }
@@ -795,8 +797,16 @@ onBeforeUnmount(() => {
           <span class="i-carbon-add-alt" />
           生成卡密
         </h2>
+        <div class="panel-tools">
+          <span v-if="!genExpanded" class="gen-summary">
+            {{ genDays }} 天 · {{ genCount }} 张 · 每张 {{ genMaxUses }} 次{{ genNote ? ` · ${genNote}` : '' }}
+          </span>
+          <BaseButton size="sm" variant="outline" @click="genExpanded = !genExpanded">
+            {{ genExpanded ? '收起' : '展开' }}
+          </BaseButton>
+        </div>
       </div>
-      <div class="gen-grid">
+      <div v-if="genExpanded" class="gen-grid">
         <label class="field">
           <span class="field-label">时长（天）</span>
           <BaseInput v-model.number="genDays" type="number" min="1" max="3650" />
@@ -1326,6 +1336,11 @@ onBeforeUnmount(() => {
 
 .search-input {
   width: 220px;
+}
+
+.gen-summary {
+  color: var(--ui-muted);
+  font-size: 12px;
 }
 
 .gen-grid {

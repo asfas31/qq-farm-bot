@@ -3,7 +3,7 @@
 > [!NOTE]
 > **仓库性质：个人自用更新仓库。** 本仓库由仓库所有者自行维护，仅用于本人部署实例的源码存放、在线更新、备份与回滚，不是官方发布渠道，不对外提供下载、更新或技术支持。面板「版本更新」功能默认以本仓库 `main` 分支作为更新源，分支与提交变化即代表本人实例的部署内容。
 
-基于 Node.js 的 QQ 农场自动化工具，提供多账号挂机、农场与好友自动化、独立图鉴与藏品、活动中心、商城、数据分析和 Web 控制面板。当前项目版本为 `20261102`，QQ 与微信游戏协议版本均为 `1.16.1.6_20261028`，两端独立维护版本配置和 TSDK/WASM。
+基于 Node.js 的 QQ 农场自动化工具，提供多用户与卡密、多账号挂机、农场与好友自动化、独立图鉴与藏品、活动中心、商城、数据分析和 Web 控制面板。当前项目版本为 `20261124`，QQ 与微信游戏协议版本均为 `1.17.0.4_20261117`，两端独立维护版本配置和 TSDK/WASM。
 
 > [!IMPORTANT]
 > 首次启动会创建默认管理员 `admin` / `admin`，Web 面板默认端口为 `3007`。对外部署后请立即修改密码，并避免将未加防护的管理端口直接暴露到公网。
@@ -21,10 +21,11 @@
 
 ### 账号与登录
 
-- 游戏账号可无限添加并独立运行，每个账号可单独配置种植、好友、自动化和执行间隔策略
-- 支持抓包 Code 登录、微信扫码登录和 QQ扫码登录
+- 游戏账号可无限添加并独立运行，每个账号可单独配置种植、好友、自动化和执行间隔策略，并归属到具体用户（`ownerId`）
+- 四种登录方式：手动填入 Code、微信扫码、`qq-miniapp-auth` + NapCat 的 QQ 扫码、独立 `qq-capture` 网关的 QQ 自动抓包
+- QQ 扫码走 NapCat 内核（Docker 容器），自动抓包走 MITM 代理网关，两者互不依赖，可同时启用
 - 支持账号启停、状态监控、实时日志和离线提醒
-- Web 面板只保留一个超级管理员，不提供注册、普通用户和租户隔离
+- 面板有超级管理员与普通用户：卡密开通/续期用户、用户可绑定自己的推送目标，账号与推送按归属隔离
 
 ### 农场自动化
 
@@ -91,6 +92,15 @@
 - 离线提醒：账号下线、神秘商人到访与购买、通知测试各自独立卡片
 - 免费领卡密只发放管理员预先生成的卡密，卡池为空时直接提示补充，不现场生成
 
+### 卡密与用户
+
+- 卡密可批量生成（天数、可用次数、备注），支持筛选、搜索和按用户/备注/卡密匹配
+- 卡密列表每行有「详情」抽屉：卡密、状态、用量进度、创建/到期时间、兑换记录，可直接改备注、复制卡密、复制兑换用户、启停或删除
+- 列表支持全选/反选、批量启用/禁用/改备注/删除、复制卡密和导出 CSV；抽屉内支持上一条/下一条连续核对
+- 普通用户凭卡密自助注册或续期，管理员可直接建号、禁用/启用用户、续期和重置密码
+- 免费领取从管理员生成的卡池发放，可调天数、可用次数、同 IP 冷却、每日上限与验证难度，并记录领取 IP/时间/卡密
+- 用户可独立绑定 QQ 官方机器人推送目标（AppID/AppSecret/OpenID）与自己的日报、实时推送开关；管理员渠道与用户绑定互不覆盖
+
 ### 在线更新与回滚
 
 - 源码运行且仓库内存在 `.git`、系统装有 `git` 时，设置页「版本更新」可检查远程分支、拉取代码并查看当前提交
@@ -109,6 +119,8 @@
 | 后端 | Node.js 20、Express 4、Socket.IO 4、TypeScript 5.9 |
 | 前端 | Vue 3.5、Naive UI 2、Vue Router 5、Pinia 3、Vite 7、UnoCSS 66 |
 | 工程 | pnpm 10.30.2、ESLint 9、Docker Compose |
+| 抓包网关 | Go 1.23、`goproxy`、`gin`（`qq-capture/`） |
+| 外部服务 | NapCat 4.18.28 / OneBot 11、`qq-miniapp-auth` |
 | 协议 | WebSocket、Protocol Buffers、TSDK WASM |
 
 ## 快速开始
@@ -252,10 +264,11 @@ chmod +x ./qq-farm-bot
 
 1. 打开 Web 面板，使用 `admin` / `admin` 登录。
 2. 进入“设置 → 系统设置”修改管理员密码。
-3. 如需使用 QQ 扫码登录，先部署并启动 [qq-miniapp-auth](https://github.com/asfas31/qq-farm-bot/tree/main/miniapp-auth) 服务，再在“设置 → 系统设置 → 登录设置”开启 QQ 扫码登录，并填写 NapCat 接口地址和接口签名。
-4. 在设置页添加游戏账号，可使用有效 Code、微信扫码或 QQ扫码登录。
-5. 为账号配置种植、自动化和好友策略，并按需设置实例级下线提醒。
-6. 启动账号，在概览页确认连接状态、农场数据和实时日志。
+3. 如需使用 QQ 扫码登录：启动 NapCat（本机 Docker 容器，WebUI `127.0.0.1:6099`、OneBot `127.0.0.1:13300`），再启动 [qq-miniapp-auth](https://github.com/asfas31/qq-farm-bot/tree/main/miniapp-auth)，并在“登录设置”开启 QQ 扫码，填入其接口地址和 `API_SIGNING_SECRET`。
+4. 如需使用 QQ 自动抓包登录：启动 `qq-capture` 网关，在“登录设置”开启并填写 `http://127.0.0.1:8080`，手机安装 CA 证书后按弹窗显示的代理地址连接。两种方式可同时开启。
+5. 在设置页添加游戏账号，可使用有效 Code、微信扫码、QQ 扫码或 QQ 自动抓包登录；用户账号由管理员用卡密开通或续期。
+6. 为账号配置种植、自动化和好友策略，并按需设置实例级下线提醒。
+7. 启动账号，在概览页确认连接状态、农场数据和实时日志。
 
 Code 具有时效性；登录失败时应先重新获取 Code 或重新扫码。QQ 客户端被挤下线后，官方“重新登录”会签发新的 Code；可启动 QQFarmCodeHelper 的标准获取模式并开启自动同步，再点击官方“重新登录”，Helper 会更新匹配账号的 Code 并重新启动远程账号。协议监听模式只落盘抓包，永远不会自动上传 Code。
 
@@ -272,6 +285,8 @@ QQ 扫码登录依赖外部 [qq-miniapp-auth](https://github.com/asfas31/qq-farm
 | `TZ` | `Asia/Shanghai` | Docker Compose | 容器时区 |
 | `NODE_ENV` | `production` | Docker | Compose 当前固定为生产环境 |
 | `LOG_LEVEL` | `info` | 后端 | 服务端日志级别 |
+| `QQ_CAPTURE_API_URL` | 空 | 后端 | QQ 抓包网关地址，登录设置里的地址优先 |
+| `QQ_CAPTURE_SESSION_TTL_MS` | `1800000` | 后端 | 抓包会话本地记录保留时间 |
 
 管理员账号不通过环境变量初始化。首次运行会自动创建 `admin` / `admin`，之后的管理员凭据保存在数据目录的 `admin.json` 中。项目不提供注册或新增管理员功能。
 
@@ -328,7 +343,7 @@ QQ 扫码登录依赖外部 [qq-miniapp-auth](https://github.com/asfas31/qq-farm
 
 管理员凭据、游戏账号、配置、活动状态和日志都属于运行数据。升级、迁移或重新部署前，建议先停止服务并备份整个数据目录或 Docker 命名卷，而不是只复制单个 JSON 文件。
 
-游戏账号属于当前实例，不带用户归属字段，也没有数量上限。通知类型和推送渠道对当前实例的所有账号生效。神秘商人的到货和自动购买提醒还需在对应账号的「自动控制」中开启。
+游戏账号按 `ownerId` 归属到管理员或具体用户，没有数量上限；普通用户只能访问自己名下的账号。全局通知渠道下发管理员全量汇总，用户自建的 QQ 机器人绑定只推送该用户自己的账号。神秘商人的到货和自动购买提醒还需在对应账号的「自动控制」中开启。卡密、卡池、用户表和推送绑定都存放在 `core/data/`，属于必须备份的运行数据。
 
 ## 抓包服务
 
@@ -347,7 +362,24 @@ curl -fsS http://127.0.0.1:8080/api/health
 
 首次启动生成 CA 证书到 `CERT_DIR`，客户端需在手机上安装该证书；证书目录必须持久化，升级时不要覆盖。云服务器安全组与系统防火墙需放行 `8080` 和 `5000-5099`。详细部署见 `qq-capture/README-DEPLOY.md`。
 
-面板「设置 → 登录设置」开启「QQ自动抓包登录」并填写抓包服务地址（同机部署填 `http://127.0.0.1:8080`）后，添加账号弹窗会多出「QQ自动抓包」页：下载证书、按页面显示的代理地址配置手机，抓到 Code 和好友 GID 后自动建号，好友 GID 直接写入已知好友列表。抓包会话由服务端持有，网关地址不暴露给浏览器。
+面板「设置 → 登录设置」开启「QQ自动抓包登录」并填写抓包服务地址（同机部署填 `http://127.0.0.1:8080`）后，添加账号弹窗会多出「QQ抓包」页：下载证书、按页面显示的代理地址配置手机，抓到 Code 和好友 GID 后自动建号，好友 GID 直接写入已知好友列表。抓包会话由服务端持有，网关地址不暴露给浏览器。
+
+## 服务器部署形态（本人实例）
+
+实例运行在 `42.192.212.243`（Ubuntu + systemd），源码目录 `/opt/qq-farm-bot`。服务划分：
+
+| 服务 | 形式 | 监听 | 说明 |
+| --- | --- | --- | --- |
+| `qq-farm-bot` | systemd | `0.0.0.0:3007` | Web 面板、后端 API、账号 Worker |
+| `qq-miniapp-auth` | systemd | `127.0.0.1:8787` / `9010` | QQ 扫码桥接与小程序授权 |
+| `qq-capture` | systemd + Go 二进制 | `8080`、`5000-5099` | QQ 自动抓包网关 |
+| `napcat-qq` | systemd 单元管理 Docker 容器 | `127.0.0.1:6099` / `13300` / `3001` | NapCat 登录内核（镜像 `mlikiowa/napcat-docker:v4.18.28`） |
+
+关键路径：运行配置 `/opt/qq-farm-bot/core/data/store.json`；桥接配置 `/opt/qq-farm-bot/miniapp-auth/.env`；抓包配置 `/etc/qq-capture/qq-capture.env`；CA 证书 `/var/lib/qq-capture/certs`；NapCat 数据 `/opt/napcat/{config,QQ,plugins,cache}`。
+
+`miniapp-auth` 的 `API_SIGNING_SECRET` 必须与面板 `napCatSignature` 一致；`NAPCAT_WEBUI_TOKEN` 来自 `/opt/napcat/config/webui.json`，`NAPCAT_API_URL` 指向 `127.0.0.1:13300`（宿主机 3000 已被 nginx 占用）。`QR_REINIT_COMMAND=sudo systemctl restart napcat-qq`，已配 sudoers 免密，供取码卡死时硬重启内核。
+
+systemd 模式下网页只能拉代码，更新顺序是：检查更新 → 仅拉取代码 → 终端执行 `NODE_OPTIONS=--max-old-space-size=1536 pnpm build` → 点面板「重启服务」。检查与拉取已内置 GitHub 直连和镜像回退，推送仍走 `origin`。
 
 ## 项目结构
 
@@ -439,6 +471,7 @@ pnpm -C core exec tsx ../tools/audit-capture-compatibility.js <capture-dir>
 - [神秘商人、游戏商城与购买协议](docs/shop-protocols.md)
 - [好友宠物缓存与每日同步](docs/friend-pet-cache.md)
 - [个人页宠物协议](docs/pet-protocols.md)
+- [图鉴、变异宝典与藏品](docs/collections-20261101.md)
 
 ## 免责声明
 
@@ -447,5 +480,3 @@ pnpm -C core exec tsx ../tools/audit-capture-compatibility.js <capture-dir>
 <div align="center">
   <p>如果觉得项目有用，欢迎点一个 Star。</p>
 </div>
-
-- [图鉴、变异宝典与藏品](docs/collections-20261101.md)
